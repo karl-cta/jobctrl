@@ -158,6 +158,8 @@ const fr: Translations = {
   'common.skip_to_content': 'Aller au contenu',
   'common.search': 'Rechercher',
   'common.filter_status': 'Filtrer par statut',
+  'common.source_code': 'Code source',
+  'common.open_source': 'Open source · MIT',
 }
 
 const en: Translations = {
@@ -318,6 +320,8 @@ const en: Translations = {
   'common.skip_to_content': 'Skip to content',
   'common.search': 'Search',
   'common.filter_status': 'Filter by status',
+  'common.source_code': 'Source code',
+  'common.open_source': 'Open source · MIT',
 }
 
 const locales: Record<string, Translations> = { fr, en }

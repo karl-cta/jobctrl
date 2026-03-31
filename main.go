@@ -10,6 +10,8 @@ import (
 	"job-ctrl/internal/server"
 )
 
+var Version = "dev"
+
 //go:embed frontend/dist
 var frontendFS embed.FS
 
@@ -30,7 +32,7 @@ func main() {
 		addr = ":8080"
 	}
 
-	handler := server.New(database, frontendFS)
+	handler := server.New(database, frontendFS, Version)
 
 	log.Printf("Starting Job-Ctrl on %s", addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {

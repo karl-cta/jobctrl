@@ -6,12 +6,13 @@ COPY frontend/ .
 RUN npm run build
 
 FROM golang:1.26-alpine AS go-builder
+ARG VERSION=dev
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o job-ctrl .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=${VERSION}" -o job-ctrl .
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata curl

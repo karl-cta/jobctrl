@@ -21,7 +21,7 @@ Les données sont persistées dans un volume Docker (`job-ctrl-data`).
 Pour une version spécifique :
 
 ```bash
-docker pull ghcr.io/karl-cta/jobctrl:0.1.0
+docker pull ghcr.io/karl-cta/jobctrl:0.0.1
 ```
 
 <details>

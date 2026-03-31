@@ -14,7 +14,7 @@ function navLink(href: string, label: string): string {
 
 export function createLayout(content: HTMLElement): HTMLElement {
   const wrapper = document.createElement('div')
-  wrapper.className = 'min-h-screen bg-surface text-primary'
+  wrapper.className = 'min-h-screen bg-surface text-primary flex flex-col'
 
   const locale = getLocale()
   const dark = isDark()
@@ -53,10 +53,27 @@ export function createLayout(content: HTMLElement): HTMLElement {
       </div>
     </div>
 
-    <main id="main-content" class="max-w-6xl mx-auto px-5 sm:px-8 py-8 sm:py-12 focus:outline-none" tabindex="-1"></main>
+    <main id="main-content" class="max-w-6xl mx-auto px-5 sm:px-8 py-8 sm:py-12 focus:outline-none flex-1 w-full" tabindex="-1"></main>
+
+    <footer class="border-t border-border mt-auto py-6">
+      <div class="max-w-6xl mx-auto px-5 sm:px-8 flex items-center justify-between text-xs text-muted">
+        <span>Job<span class="text-accent font-semibold">Ctrl</span> <span id="app-version"></span></span>
+        <div class="flex items-center gap-3">
+          <span>${t('common.open_source')}</span>
+          <a href="https://github.com/karl-cta/jobctrl" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 hover:text-primary transition-colors" aria-label="${t('common.source_code')}">
+            ${icons.github} GitHub
+          </a>
+        </div>
+      </div>
+    </footer>
   `
 
   wrapper.querySelector('#main-content')!.appendChild(content)
+
+  fetch('/api/health').then(r => r.json()).then(data => {
+    const el = wrapper.querySelector('#app-version')
+    if (el && data.version) el.textContent = data.version
+  }).catch(() => {})
 
   // Mobile nav toggle
   const mobileNav = wrapper.querySelector('#mobile-nav') as HTMLElement

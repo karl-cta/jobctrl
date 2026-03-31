@@ -12,9 +12,11 @@ dev-backend:
 dev-frontend:
 	cd frontend && npm run dev
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
 build:
 	cd frontend && npm run build
-	go build -ldflags="-s -w" -o job-ctrl .
+	go build -ldflags="-s -w -X main.Version=$(VERSION)" -o job-ctrl .
 
 run: build
 	./job-ctrl

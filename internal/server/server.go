@@ -12,7 +12,7 @@ import (
 	"job-ctrl/internal/handlers"
 )
 
-func New(db *sql.DB, frontendFS embed.FS) http.Handler {
+func New(db *sql.DB, frontendFS embed.FS, version string) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -23,7 +23,7 @@ func New(db *sql.DB, frontendFS embed.FS) http.Handler {
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"status":"ok"}`))
+			w.Write([]byte(`{"status":"ok","version":"` + version + `"}`))
 		})
 
 		r.Get("/applications", h.ListApplications)
