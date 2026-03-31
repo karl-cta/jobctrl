@@ -23,9 +23,21 @@ async function render(path: string) {
     if (match) {
       const params: Record<string, string> = {}
       route.keys.forEach((key, i) => { params[key] = match[i + 1] })
+
+      // Brief fade-out, swap content, fade-in
+      const hasContent = app.children.length > 0
+      if (hasContent) {
+        app.classList.add('route-exit')
+        await new Promise<void>(r => {
+          const fallback = setTimeout(r, 150)
+          app.addEventListener('transitionend', () => { clearTimeout(fallback); r() }, { once: true })
+        })
+      }
+
       app.innerHTML = ''
       const el = await route.handler(params)
       app.appendChild(el)
+      app.classList.remove('route-exit')
       document.getElementById('main-content')?.focus({ preventScroll: true })
       window.scrollTo(0, 0)
       return

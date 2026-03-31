@@ -155,10 +155,18 @@ const fr: Translations = {
   'status.Applied': 'Candidaté',
   'status.Screening': 'Présélection',
   'status.Interviewing': 'Entretiens',
+  'status.Interviewing_one': 'Entretien',
+  'status.Interviewing_other': 'Entretiens',
   'status.Offer': 'Offre reçue',
+  'status.Offer_one': 'Offre reçue',
+  'status.Offer_other': 'Offres reçues',
   'status.Accepted': 'Accepté',
   'status.Rejected': 'Refusé',
+  'status.Rejected_one': 'Refusé',
+  'status.Rejected_other': 'Refusés',
   'status.Withdrawn': 'Retiré',
+  'status.Withdrawn_one': 'Retiré',
+  'status.Withdrawn_other': 'Retirés',
 
   // Common
   'common.page_not_found': 'Page non trouvée',
@@ -326,7 +334,11 @@ const en: Translations = {
   'status.Applied': 'Applied',
   'status.Screening': 'Screening',
   'status.Interviewing': 'Interviewing',
+  'status.Interviewing_one': 'Interview',
+  'status.Interviewing_other': 'Interviews',
   'status.Offer': 'Offer',
+  'status.Offer_one': 'Offer',
+  'status.Offer_other': 'Offers',
   'status.Accepted': 'Accepted',
   'status.Rejected': 'Rejected',
   'status.Withdrawn': 'Withdrawn',
@@ -352,7 +364,7 @@ export function t(key: string): string {
 }
 
 export function tp(key: string, count: number): string {
-  return count <= 1 ? t(`${key}_one`) : t(`${key}_other`)
+  return count === 1 ? t(`${key}_one`) : t(`${key}_other`)
 }
 
 export function setLocale(locale: string) {

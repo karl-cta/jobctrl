@@ -1,14 +1,14 @@
 import { t } from '../i18n'
 
-export function openModal(opts: { title: string; content: HTMLElement; onClose?: () => void }): HTMLElement {
+export function openModal(opts: { title: string; content: HTMLElement; onClose?: () => void }): { el: HTMLElement; close: () => void } {
   const overlay = document.createElement('div')
-  overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm'
+  overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm modal-overlay'
   overlay.setAttribute('role', 'dialog')
   overlay.setAttribute('aria-modal', 'true')
   overlay.setAttribute('aria-label', opts.title)
 
   const modal = document.createElement('div')
-  modal.className = 'bg-surface-1 border border-border rounded-2xl max-w-lg w-full mx-4 max-h-[85vh] flex flex-col'
+  modal.className = 'bg-surface-1 border border-border rounded max-w-lg w-full mx-4 max-h-[85vh] flex flex-col modal-panel'
   modal.style.boxShadow = 'var(--shadow-elevated)'
 
   const header = document.createElement('div')
@@ -52,12 +52,18 @@ export function openModal(opts: { title: string; content: HTMLElement; onClose?:
     }
   }
 
+  let closed = false
   function close() {
+    if (closed) return
+    closed = true
     document.removeEventListener('keydown', onKeydown)
-    overlay.remove()
-    document.body.style.overflow = ''
-    previouslyFocused?.focus()
-    opts.onClose?.()
+    overlay.classList.add('closing')
+    overlay.addEventListener('animationend', () => {
+      overlay.remove()
+      document.body.style.overflow = ''
+      previouslyFocused?.focus()
+      opts.onClose?.()
+    }, { once: true })
   }
 
   overlay.addEventListener('click', (e) => {
@@ -72,5 +78,5 @@ export function openModal(opts: { title: string; content: HTMLElement; onClose?:
   const closeBtn = header.querySelector('[data-modal-close]') as HTMLElement
   closeBtn?.focus()
 
-  return overlay
+  return { el: overlay, close }
 }

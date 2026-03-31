@@ -16,13 +16,6 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
   const content = document.createElement('div')
   content.className = 'max-w-2xl space-y-6 stagger'
 
-  const sectionColors: Record<string, string> = {
-    company: 'bg-accent/40',
-    position: 'bg-violet-500/40',
-    salary: 'bg-emerald-500/40',
-    notes: 'bg-sky-500/40',
-  }
-
   content.innerHTML = `
     <div class="flex items-center gap-3">
       <button id="back-btn" class="btn-ghost p-1.5" aria-label="${t('form.back')}">${icons.arrowLeft}</button>
@@ -30,8 +23,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
     </div>
 
     <form id="app-form" class="space-y-5">
-      ${!isEdit ? `<div class="card relative overflow-hidden">
-        <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-accent/40"></div>
+      ${!isEdit ? `<div class="card">
         <div class="flex gap-2 items-end">
           <div class="flex-1">
             <label for="f-extract-url" class="label">${t('form.extract_url')}</label>
@@ -41,9 +33,8 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         </div>
       </div>` : ''}
 
-      <div class="card space-y-4 relative overflow-hidden">
-        <div class="absolute left-0 top-0 bottom-0 w-0.5 ${sectionColors.company}"></div>
-        <h2 class="text-sm font-semibold text-primary/70">${t('form.company')}</h2>
+      <div class="card space-y-4">
+        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.company')}</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label for="f-company-name" class="label">${t('form.company_name')} *</label>
@@ -68,9 +59,8 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         </div>
       </div>
 
-      <div class="card space-y-4 relative overflow-hidden">
-        <div class="absolute left-0 top-0 bottom-0 w-0.5 ${sectionColors.position}"></div>
-        <h2 class="text-sm font-semibold text-primary/70">${t('form.position')}</h2>
+      <div class="card space-y-4">
+        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.position')}</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label for="f-job-title" class="label">${t('form.job_title')} *</label>
@@ -111,9 +101,8 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         </div>
       </div>
 
-      <div class="card space-y-4 relative overflow-hidden">
-        <div class="absolute left-0 top-0 bottom-0 w-0.5 ${sectionColors.salary}"></div>
-        <h2 class="text-sm font-semibold text-primary/70">${t('form.salary_status')}</h2>
+      <div class="card space-y-4">
+        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.salary_status')}</h2>
         <div class="grid grid-cols-1 xs:grid-cols-2 gap-4">
           <div>
             <label for="f-salary" class="label">${t('form.salary')}</label>
@@ -156,7 +145,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
               }
               const c = colors[n]
               return `<button type="button" data-confidence="${n}" role="radio" aria-checked="${active}"
-                class="conf-btn rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50
+                class="conf-btn rounded border px-3 py-1.5 text-xs font-semibold transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50
                   ${active ? c.active + ' border-transparent' : c.idle + ' hover:bg-surface-2'}"
                 aria-label="${t('form.confidence_' + n)}">${t('form.confidence_' + n)}</button>`
             }).join('')}
@@ -169,9 +158,8 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         </div>
       </div>
 
-      <div class="card space-y-4 relative overflow-hidden">
-        <div class="absolute left-0 top-0 bottom-0 w-0.5 ${sectionColors.notes}"></div>
-        <h2 class="text-sm font-semibold text-primary/70">${t('form.notes_section')}</h2>
+      <div class="card space-y-4">
+        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.notes_section')}</h2>
         <div>
           <label for="f-notes" class="label">${t('form.notes')}</label>
           <textarea id="f-notes" name="notes" class="input min-h-[80px]" placeholder="${t('form.notes_placeholder')}">${v('notes')}</textarea>
@@ -292,7 +280,13 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       btn.addEventListener('click', () => {
         const n = Number(btn.dataset.star)
         const current = Number(ratingInput.value)
-        updateStars(current === n ? 0 : n)
+        const newVal = current === n ? 0 : n
+        updateStars(newVal)
+        if (newVal > 0) {
+          btn.classList.remove('star-pop')
+          void btn.offsetWidth // force reflow to restart animation
+          btn.classList.add('star-pop')
+        }
       })
     })
   }
@@ -317,7 +311,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
           const bn = Number(b.dataset.confidence)
           const isActive = bn === value
           const c = confColors[bn]
-          b.className = `conf-btn rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${isActive ? c.active : c.idle + ' hover:bg-surface-2'}`
+          b.className = `conf-btn rounded border px-3 py-1.5 text-xs font-semibold transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${isActive ? c.active : c.idle + ' hover:bg-surface-2'}`
           b.setAttribute('aria-checked', String(isActive))
         })
       })

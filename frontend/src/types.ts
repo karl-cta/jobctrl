@@ -104,6 +104,14 @@ export function statusLabel(status: ApplicationStatus): string {
   return t(`status.${status}`)
 }
 
+export function statusLabelCount(status: ApplicationStatus, count: number): string {
+  const suffix = count === 1 ? '_one' : '_other'
+  const key = `status.${status}${suffix}`
+  const result = t(key)
+  // If no plural form exists, t() returns the key itself — fall back to default label
+  return result === key ? t(`status.${status}`) : result
+}
+
 export const STATUS_COLORS: Record<ApplicationStatus, string> = {
   Wishlist: 'bg-stone-100 text-stone-600 dark:bg-stone-800/60 dark:text-stone-400',
   Applied: 'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400',

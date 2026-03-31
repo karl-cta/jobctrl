@@ -24,9 +24,35 @@ function getContainer(): HTMLElement {
   return container
 }
 
+/** Burst of small particles from an element — for celebrating milestones */
+export function celebrate(anchor?: HTMLElement) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+  const rect = anchor?.getBoundingClientRect()
+  const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2
+  const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2
+
+  const colors = ['#10b981', '#14b8a6', '#0ea5e9', '#f59e0b', '#8b5cf6']
+
+  for (let i = 0; i < 12; i++) {
+    const dot = document.createElement('div')
+    dot.className = 'celebrate-particle'
+    const angle = (Math.PI * 2 * i) / 12 + (Math.random() - 0.5) * 0.4
+    const dist = 40 + Math.random() * 50
+    dot.style.setProperty('--dx', `${Math.cos(angle) * dist}px`)
+    dot.style.setProperty('--dy', `${Math.sin(angle) * dist - 20}px`)
+    dot.style.left = `${cx}px`
+    dot.style.top = `${cy}px`
+    dot.style.backgroundColor = colors[i % colors.length]
+    dot.style.animationDelay = `${i * 25}ms`
+    document.body.appendChild(dot)
+    setTimeout(() => dot.remove(), 800)
+  }
+}
+
 export function toast(message: string, type: ToastType = 'info', durationMs = 4000) {
   const el = document.createElement('div')
-  el.className = `border rounded-xl px-4 py-3 text-sm font-medium flex items-center gap-2.5 ${typeStyles[type]}`
+  el.className = `border rounded px-4 py-3 text-sm font-medium flex items-center gap-2.5 ${typeStyles[type]}`
   el.style.boxShadow = 'var(--shadow-elevated)'
   el.setAttribute('role', type === 'error' ? 'alert' : 'status')
 
@@ -40,18 +66,18 @@ export function toast(message: string, type: ToastType = 'info', durationMs = 40
   el.appendChild(textSpan)
 
   el.style.opacity = '0'
-  el.style.transform = 'translateY(8px) scale(0.96)'
+  el.style.transform = 'translateY(8px)'
   getContainer().appendChild(el)
 
   requestAnimationFrame(() => {
-    el.style.transition = 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+    el.style.transition = 'opacity 0.2s ease, transform 0.2s ease'
     el.style.opacity = '1'
-    el.style.transform = 'translateY(0) scale(1)'
+    el.style.transform = 'translateY(0)'
   })
 
   setTimeout(() => {
     el.style.opacity = '0'
-    el.style.transform = 'translateY(8px) scale(0.96)'
-    setTimeout(() => el.remove(), 250)
+    el.style.transform = 'translateY(8px)'
+    setTimeout(() => el.remove(), 200)
   }, durationMs)
 }

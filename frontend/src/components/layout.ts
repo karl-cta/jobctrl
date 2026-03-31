@@ -5,7 +5,7 @@ import { navigate } from '../router'
 
 function navLink(href: string, label: string): string {
   const active = location.pathname === href || (href !== '/' && location.pathname.startsWith(href))
-  const base = 'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
+  const base = 'px-3 py-1.5 rounded text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
   const cls = active
     ? `${base} text-accent bg-accent/10`
     : `${base} text-muted hover:text-primary`
@@ -14,7 +14,7 @@ function navLink(href: string, label: string): string {
 
 export function createLayout(content: HTMLElement): HTMLElement {
   const wrapper = document.createElement('div')
-  wrapper.className = 'min-h-screen bg-surface text-primary flex flex-col'
+  wrapper.className = 'min-h-screen text-primary flex flex-col'
 
   const locale = getLocale()
   const dark = isDark()
@@ -79,15 +79,29 @@ export function createLayout(content: HTMLElement): HTMLElement {
   const mobileNav = wrapper.querySelector('#mobile-nav') as HTMLElement
   const menuBtn = wrapper.querySelector('#mobile-menu-btn') as HTMLElement
 
+  const openMobileNav = () => {
+    mobileNav.classList.remove('hidden', 'nav-exit')
+    mobileNav.classList.add('nav-enter')
+    menuBtn.setAttribute('aria-expanded', 'true')
+  }
+  const closeMobileNav = () => {
+    if (mobileNav.classList.contains('hidden')) return
+    mobileNav.classList.remove('nav-enter')
+    mobileNav.classList.add('nav-exit')
+    menuBtn.setAttribute('aria-expanded', 'false')
+    mobileNav.addEventListener('animationend', () => {
+      if (mobileNav.classList.contains('nav-exit')) {
+        mobileNav.classList.add('hidden')
+        mobileNav.classList.remove('nav-exit')
+      }
+    }, { once: true })
+  }
+
   menuBtn?.addEventListener('click', () => {
-    const isHidden = mobileNav.classList.toggle('hidden')
-    menuBtn.setAttribute('aria-expanded', String(!isHidden))
+    mobileNav.classList.contains('hidden') ? openMobileNav() : closeMobileNav()
   })
   mobileNav.querySelectorAll('a[data-link]').forEach(a => {
-    a.addEventListener('click', () => {
-      mobileNav.classList.add('hidden')
-      menuBtn.setAttribute('aria-expanded', 'false')
-    })
+    a.addEventListener('click', () => closeMobileNav())
   })
 
   // Theme toggle

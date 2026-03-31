@@ -2,7 +2,7 @@ import { api } from '../api'
 import { createLayout } from '../components/layout'
 import { openModal } from '../components/modal'
 import { navigate } from '../router'
-import { toast } from '../components/toast'
+import { toast, celebrate } from '../components/toast'
 import { t, getDateLocale, translateTimelineEvent } from '../i18n'
 import { icons } from '../icons'
 import { esc, sanitizeUrl, safeHostname } from '../sanitize'
@@ -18,8 +18,8 @@ import {
 const OUTCOME_COLORS: Record<string, string> = {
   Passed: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   Failed: 'bg-rose-50 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300',
-  Pending: 'bg-slate-100 text-slate-600 dark:bg-slate-800/80 dark:text-slate-300',
-  Cancelled: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800/60 dark:text-zinc-400',
+  Pending: 'bg-stone-100 text-stone-600 dark:bg-stone-800/60 dark:text-stone-300',
+  Cancelled: 'bg-stone-100 text-stone-500 dark:bg-stone-800/40 dark:text-stone-400',
 }
 
 function buildInterviewForm(iv?: Partial<Interview>): {
@@ -165,17 +165,26 @@ function makeTabs(tabs: Array<{ id: string; label: string; panel: HTMLElement }>
   wrapper.className = 'space-y-0'
 
   const bar = document.createElement('div')
-  bar.className = 'flex gap-0 border-b border-border overflow-x-auto'
+  bar.className = 'relative flex gap-0 border-b border-border overflow-x-auto'
   bar.setAttribute('role', 'tablist')
+
+  const indicator = document.createElement('div')
+  indicator.className = 'tab-indicator'
+  bar.appendChild(indicator)
 
   const panels: HTMLElement[] = []
 
   const tabClass = (active: boolean) =>
-    `px-4 py-3 text-sm font-medium border-b-2 transition-all duration-150 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-inset ${
+    `px-5 py-3.5 text-sm font-medium border-b-2 border-transparent transition-colors duration-150 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-inset ${
       active
-        ? 'border-accent text-accent'
-        : 'border-transparent text-muted hover:text-primary hover:border-surface-3'
+        ? 'text-accent'
+        : 'text-muted hover:text-primary'
     }`
+
+  function moveIndicator(btn: HTMLElement) {
+    indicator.style.left = `${btn.offsetLeft}px`
+    indicator.style.width = `${btn.offsetWidth}px`
+  }
 
   tabs.forEach((tab, i) => {
     const btn = document.createElement('button')
@@ -197,12 +206,19 @@ function makeTabs(tabs: Array<{ id: string; label: string; panel: HTMLElement }>
     panels.push(tab.panel)
   })
 
+  // Position indicator on first tab after layout
+  requestAnimationFrame(() => {
+    const first = bar.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (first) moveIndicator(first)
+  })
+
   function activateTab(activeId: string) {
     bar.querySelectorAll<HTMLElement>('[data-tab]').forEach(b => {
       const isActive = b.dataset.tab === activeId
       b.setAttribute('aria-selected', isActive ? 'true' : 'false')
       b.setAttribute('tabindex', isActive ? '0' : '-1')
       b.className = tabClass(isActive)
+      if (isActive) moveIndicator(b)
     })
     panels.forEach(p => {
       p.hidden = p.id !== `tab-panel-${activeId}`
@@ -255,17 +271,17 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const dateFmt = getDateLocale()
 
   const content = document.createElement('div')
-  content.className = 'space-y-6 max-w-5xl stagger'
+  content.className = 'space-y-10 max-w-4xl mx-auto stagger'
 
   const header = document.createElement('div')
-  header.className = 'flex flex-col sm:flex-row sm:items-start justify-between gap-4 relative z-10'
+  header.className = 'space-y-5 relative z-10'
 
   // Status dropdown
   const statusWrapper = document.createElement('div')
   statusWrapper.className = 'relative'
 
   const statusBtn = document.createElement('button')
-  statusBtn.className = `badge ${STATUS_COLORS[app.status as ApplicationStatus]} cursor-pointer hover:opacity-80 transition-all duration-150`
+  statusBtn.className = `badge ${STATUS_COLORS[app.status as ApplicationStatus]} cursor-pointer hover:opacity-80 transition-opacity duration-100`
   statusBtn.textContent = statusLabel(app.status as ApplicationStatus)
   statusBtn.setAttribute('aria-haspopup', 'true')
   statusBtn.setAttribute('aria-expanded', 'false')
@@ -284,16 +300,34 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const checkSvg = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5 text-accent shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>'
 
   const statusDropdown = document.createElement('div')
-  statusDropdown.className = 'hidden absolute top-full left-0 mt-2 z-40 bg-surface-1 border border-border rounded-xl py-1 min-w-[200px]'
+  statusDropdown.className = 'hidden absolute top-full left-0 mt-2 z-40 bg-surface-1 border border-border rounded py-1 min-w-[200px]'
   statusDropdown.style.boxShadow = 'var(--shadow-elevated)'
   statusDropdown.setAttribute('role', 'menu')
+
+  function openDropdown() {
+    statusDropdown.classList.remove('hidden', 'dropdown-exit')
+    statusDropdown.classList.add('dropdown-enter')
+    statusBtn.setAttribute('aria-expanded', 'true')
+  }
+  function closeDropdown() {
+    if (statusDropdown.classList.contains('hidden')) return
+    statusDropdown.classList.remove('dropdown-enter')
+    statusDropdown.classList.add('dropdown-exit')
+    statusBtn.setAttribute('aria-expanded', 'false')
+    statusDropdown.addEventListener('animationend', () => {
+      if (statusDropdown.classList.contains('dropdown-exit')) {
+        statusDropdown.classList.add('hidden')
+        statusDropdown.classList.remove('dropdown-exit')
+      }
+    }, { once: true })
+  }
 
   function renderStatusItems() {
     statusDropdown.innerHTML = ''
     ALL_STATUSES.forEach(s => {
       const isCurrent = s === app!.status
       const item = document.createElement('button')
-      item.className = `w-full text-left px-3 py-2 text-sm rounded-lg mx-0 hover:bg-surface-2 focus:bg-surface-2 focus:outline-none transition-colors flex items-center gap-2.5 ${isCurrent ? 'font-semibold text-accent' : 'text-primary'}`
+      item.className = `w-full text-left px-3 py-2 text-sm hover:bg-surface-2 focus:bg-surface-2 focus:outline-none transition-colors flex items-center gap-2.5 ${isCurrent ? 'font-semibold text-accent' : 'text-primary'}`
       item.setAttribute('role', 'menuitem')
       item.innerHTML = `
         <span class="w-2 h-2 rounded-full ${statusDotColors[s] || 'bg-accent'} shrink-0"></span>
@@ -301,16 +335,16 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         ${isCurrent ? checkSvg : '<span class="w-3.5"></span>'}
       `
       item.addEventListener('click', async () => {
-        statusDropdown.classList.add('hidden')
-        statusBtn.setAttribute('aria-expanded', 'false')
+        closeDropdown()
         try {
           await api.applications.update(id, { ...app!, status: s })
           app!.status = s
-          statusBtn.className = `badge ${STATUS_COLORS[s]} cursor-pointer hover:opacity-80 transition-all duration-150`
+          statusBtn.className = `badge ${STATUS_COLORS[s]} cursor-pointer hover:opacity-80 transition-opacity duration-100`
           statusBtn.textContent = statusLabel(s)
           renderStatusItems()
-          const celebrate: Record<string, string> = { Offer: t('list.celebrate_offer'), Accepted: t('list.celebrate_accepted') }
-          toast(celebrate[s] || statusLabel(s), 'success')
+          const celebrateMsg: Record<string, string> = { Offer: t('list.celebrate_offer'), Accepted: t('list.celebrate_accepted') }
+          toast(celebrateMsg[s] || statusLabel(s), 'success')
+          if (s === 'Offer' || s === 'Accepted') celebrate(statusBtn)
         } catch {
           toast(t('form.error'), 'error')
         }
@@ -322,10 +356,11 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   statusBtn.addEventListener('click', (e) => {
     e.stopPropagation()
-    const open = !statusDropdown.classList.contains('hidden')
-    statusDropdown.classList.toggle('hidden', open)
-    statusBtn.setAttribute('aria-expanded', open ? 'false' : 'true')
-    if (!open) {
+    const isOpen = !statusDropdown.classList.contains('hidden')
+    if (isOpen) {
+      closeDropdown()
+    } else {
+      openDropdown()
       const current = statusDropdown.querySelector<HTMLElement>('.font-semibold') || statusDropdown.querySelector<HTMLElement>('[role="menuitem"]')
       current?.focus()
     }
@@ -340,8 +375,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       case 'Home': next = 0; break
       case 'End': next = items.length - 1; break
       case 'Escape':
-        statusDropdown.classList.add('hidden')
-        statusBtn.setAttribute('aria-expanded', 'false')
+        closeDropdown()
         statusBtn.focus()
         e.stopPropagation()
         return
@@ -350,10 +384,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     e.preventDefault()
     items[next]?.focus()
   })
-  document.addEventListener('click', () => {
-    statusDropdown.classList.add('hidden')
-    statusBtn.setAttribute('aria-expanded', 'false')
-  }, { capture: true })
+  document.addEventListener('click', () => closeDropdown(), { capture: true })
 
   statusWrapper.appendChild(statusBtn)
   statusWrapper.appendChild(statusDropdown)
@@ -372,88 +403,145 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     ratingEl.setAttribute('aria-label', `${app.rating}/5`)
   }
 
+  // — Top bar: back + actions
+  const topBar = document.createElement('div')
+  topBar.className = 'flex items-center justify-between'
+  topBar.innerHTML = `
+    <a href="/applications" data-link class="text-muted hover:text-primary transition-colors text-sm flex items-center gap-1.5" aria-label="${t('form.back')}">${icons.arrowLeft} ${t('nav.applications')}</a>
+    <div class="flex items-center gap-1 shrink-0">
+      <a href="/applications/${app.id}/edit" data-link class="text-muted hover:text-primary transition-colors text-sm px-2.5 py-1.5 inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden="true">${icons.edit}</span>${t('detail.edit')}</a>
+      <button id="delete-btn" class="text-muted hover:text-red-500 dark:hover:text-red-400 transition-colors text-sm px-2.5 py-1.5 inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden="true">${icons.trash}</span>${t('detail.delete')}</button>
+    </div>
+  `
+  header.appendChild(topBar)
+
+  // — Title block
   const titleGroup = document.createElement('div')
   titleGroup.innerHTML = `
-    <div class="flex items-center gap-3 mb-1">
-      <a href="/applications" data-link class="text-muted hover:text-primary transition-colors" aria-label="${t('form.back')}">${icons.arrowLeft}</a>
-      <h1 class="text-2xl font-bold text-primary tracking-tight">${esc(app.company_name)}</h1>
-    </div>
-    <p class="text-muted text-base ml-7 mb-2">${esc(app.job_title)}</p>
-    ${app.location ? `<p class="text-muted/70 text-sm flex items-center gap-1.5 ml-7"><span aria-hidden="true" class="opacity-60">${icons.pin}</span> ${esc(app.location)}</p>` : ''}
+    <h1 class="text-3xl font-bold text-primary tracking-tighter">${esc(app.company_name)}</h1>
+    <p class="text-lg text-muted mt-1">${esc(app.job_title)}</p>
+    ${app.location ? `<p class="text-muted/60 text-sm flex items-center gap-1.5 mt-2"><span aria-hidden="true">${icons.pin}</span> ${esc(app.location)}</p>` : ''}
   `
-  const confidenceColors: Record<number, string> = {
-    1: 'bg-stone-100 text-stone-600 dark:bg-stone-800/60 dark:text-stone-400',
-    2: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
-    3: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
-    4: 'bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400',
-  }
-
-  const statusRatingRow = document.createElement('div')
-  statusRatingRow.className = 'flex items-center gap-3 mt-3 ml-7 flex-wrap'
-  statusRatingRow.appendChild(statusWrapper)
-  if (app.rating) statusRatingRow.appendChild(ratingEl)
-  if (app.confidence && app.confidence >= 1 && app.confidence <= 4) {
-    const confBadge = document.createElement('span')
-    confBadge.className = `badge ${confidenceColors[app.confidence]}`
-    confBadge.textContent = t('form.confidence_' + app.confidence)
-    statusRatingRow.appendChild(confBadge)
-  }
-  titleGroup.appendChild(statusRatingRow)
-
-  const actions = document.createElement('div')
-  actions.className = 'flex gap-2 shrink-0'
-  actions.innerHTML = `
-    <a href="/applications/${app.id}/edit" data-link class="btn-ghost gap-1.5 text-sm"><span aria-hidden="true">${icons.edit}</span> ${t('detail.edit')}</a>
-    <button id="delete-btn" class="btn-danger gap-1.5 text-sm"><span aria-hidden="true">${icons.trash}</span> ${t('detail.delete')}</button>
-  `
-
   header.appendChild(titleGroup)
-  header.appendChild(actions)
+
+  // — Status / Rating / Confidence — clean separated row
+  const confidenceColors: Record<number, string> = {
+    1: 'text-stone-500 dark:text-stone-400',
+    2: 'text-amber-600 dark:text-amber-400',
+    3: 'text-emerald-600 dark:text-emerald-400',
+    4: 'text-teal-600 dark:text-teal-400',
+  }
+
+  const metaRow = document.createElement('div')
+  metaRow.className = 'flex items-center gap-5 flex-wrap'
+  metaRow.appendChild(statusWrapper)
+  if (app.rating) {
+    const ratingGroup = document.createElement('div')
+    ratingGroup.className = 'flex items-center gap-2'
+    const ratingLabel = document.createElement('span')
+    ratingLabel.className = 'text-xs text-muted/60 uppercase tracking-wider'
+    ratingLabel.textContent = t('form.rating')
+    ratingGroup.appendChild(ratingLabel)
+    ratingGroup.appendChild(ratingEl)
+    metaRow.appendChild(ratingGroup)
+  }
+  // Confidence picker (always show, even if not set)
+  {
+    const confWrapper = document.createElement('div')
+    confWrapper.className = 'flex items-center gap-2 relative'
+    const confLabel = document.createElement('span')
+    confLabel.className = 'text-xs text-muted/60 uppercase tracking-wider'
+    confLabel.textContent = t('form.confidence')
+    confWrapper.appendChild(confLabel)
+
+    const confBtn = document.createElement('button')
+    const currentConf = (app.confidence && app.confidence >= 1 && app.confidence <= 4) ? app.confidence : 0
+    const updateConfBtn = (level: number) => {
+      if (level > 0) {
+        confBtn.className = `text-sm font-medium cursor-pointer hover:opacity-80 transition-opacity ${confidenceColors[level] || 'text-muted'}`
+        confBtn.textContent = t('form.confidence_' + level)
+      } else {
+        confBtn.className = 'text-sm text-muted/40 cursor-pointer hover:text-muted transition-colors'
+        confBtn.textContent = '---'
+      }
+    }
+    updateConfBtn(currentConf)
+    confBtn.setAttribute('aria-haspopup', 'true')
+    confWrapper.appendChild(confBtn)
+
+    const confDrop = document.createElement('div')
+    confDrop.className = 'hidden absolute top-full left-0 mt-2 z-40 bg-surface-1 border border-border rounded py-1 min-w-[160px]'
+    confDrop.style.boxShadow = 'var(--shadow-elevated)'
+    confDrop.setAttribute('role', 'menu')
+
+    const confLevels = [1, 2, 3, 4] as const
+    function renderConfItems() {
+      confDrop.innerHTML = ''
+      confLevels.forEach(n => {
+        const isCurrent = n === app!.confidence
+        const item = document.createElement('button')
+        item.className = `w-full text-left px-3 py-2 text-sm hover:bg-surface-2 focus:bg-surface-2 focus:outline-none transition-colors ${isCurrent ? 'font-semibold ' + (confidenceColors[n] || '') : 'text-primary'}`
+        item.setAttribute('role', 'menuitem')
+        item.textContent = t('form.confidence_' + n)
+        item.addEventListener('click', async () => {
+          confDrop.classList.add('hidden')
+          try {
+            const newConf = isCurrent ? 0 : n
+            await api.applications.update(id, { ...app!, confidence: newConf || undefined })
+            app!.confidence = newConf || undefined
+            updateConfBtn(newConf)
+            renderConfItems()
+          } catch {
+            toast(t('form.error'), 'error')
+          }
+        })
+        confDrop.appendChild(item)
+      })
+    }
+    renderConfItems()
+
+    confBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      confDrop.classList.toggle('hidden')
+    })
+    document.addEventListener('click', () => confDrop.classList.add('hidden'), { capture: true })
+    confWrapper.appendChild(confDrop)
+    metaRow.appendChild(confWrapper)
+  }
+  header.appendChild(metaRow)
   content.appendChild(header)
 
-  const chips = document.createElement('div')
-  chips.className = 'flex flex-wrap gap-3 ml-7'
+  // — Metadata: clean typographic row, no boxes
+  const details: Array<{ label: string; value: string; href?: string }> = []
+  if (app.contract_type) details.push({ label: t('detail.contract'), value: app.contract_type })
+  if (app.work_mode) details.push({ label: t('detail.mode'), value: app.work_mode })
+  if (app.salary) details.push({ label: t('detail.salary'), value: `${app.salary / 1000}k \u20ac` })
+  if (app.applied_at) details.push({ label: t('detail.applied_at'), value: new Date(app.applied_at).toLocaleDateString(dateFmt) })
+  if (app.source) details.push({ label: t('detail.source'), value: app.source })
+  if (app.job_url && sanitizeUrl(app.job_url)) details.push({ label: t('detail.job_link'), value: safeHostname(app.job_url), href: sanitizeUrl(app.job_url) })
 
-  const chip = (label: string, value: string) => {
-    const d = document.createElement('div')
-    d.className = 'bg-surface-2/60 rounded-lg px-3.5 py-2.5'
-    d.innerHTML = `<p class="text-xs text-muted mb-0.5 font-medium">${esc(label)}</p><p class="text-sm text-primary font-medium">${esc(value)}</p>`
-    return d
+  if (details.length) {
+    const detailsRow = document.createElement('div')
+    detailsRow.className = 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-y-5 gap-x-6 py-6 border-t border-b border-border/50'
+    details.forEach(d => {
+      const item = document.createElement('div')
+      item.innerHTML = d.href
+        ? `<span class="block text-xs text-muted/60 uppercase tracking-wider font-medium mb-1">${esc(d.label)}</span>
+           <a href="${esc(d.href)}" target="_blank" rel="noopener noreferrer" class="text-sm text-accent hover:text-accent-hover font-medium transition-colors inline-flex items-center gap-1">${esc(d.value)}</a>`
+        : `<span class="block text-xs text-muted/60 uppercase tracking-wider font-medium mb-1">${esc(d.label)}</span>
+           <span class="block text-sm text-primary font-medium">${esc(d.value)}</span>`
+      detailsRow.appendChild(item)
+    })
+    content.appendChild(detailsRow)
   }
-
-  if (app.contract_type) chips.appendChild(chip(t('detail.contract'), app.contract_type))
-  if (app.work_mode) chips.appendChild(chip(t('detail.mode'), app.work_mode))
-  if (app.salary) {
-    chips.appendChild(chip(
-      t('detail.salary'),
-      `${app.salary / 1000}k \u20ac`
-    ))
-  }
-  if (app.applied_at) {
-    chips.appendChild(chip(t('detail.applied_at'), new Date(app.applied_at).toLocaleDateString(dateFmt)))
-  }
-  if (app.source) chips.appendChild(chip(t('detail.source'), app.source))
-  if (app.job_url && sanitizeUrl(app.job_url)) {
-    const linkChip = document.createElement('div')
-    linkChip.className = 'bg-surface-2/60 rounded-lg px-3.5 py-2.5'
-    linkChip.innerHTML = `
-      <p class="text-xs text-muted mb-0.5 font-medium">${t('detail.job_link')}</p>
-      <a href="${esc(sanitizeUrl(app.job_url))}" target="_blank" rel="noopener noreferrer"
-         class="text-sm text-accent hover:text-accent-hover font-medium flex items-center gap-1.5 transition-colors">
-        ${icons.globe} ${safeHostname(app.job_url)}
-      </a>
-    `
-    chips.appendChild(linkChip)
-  }
-  content.appendChild(chips)
 
   const layout = document.createElement('div')
-  layout.className = 'flex flex-col lg:flex-row gap-5'
+  layout.className = 'flex flex-col lg:flex-row gap-6'
 
 
   // Notes tab
   const notesPanel = document.createElement('div')
-  notesPanel.className = 'p-5 space-y-3'
+  notesPanel.className = 'p-6 space-y-4'
   {
     const notesTA = document.createElement('textarea')
     notesTA.className = 'input min-h-[150px] w-full'
@@ -478,7 +566,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Prep tab
   const prepPanel = document.createElement('div')
-  prepPanel.className = 'p-5 space-y-3'
+  prepPanel.className = 'p-6 space-y-4'
   const prepTA = document.createElement('textarea')
   prepTA.className = 'input min-h-[150px] w-full font-mono text-sm'
   prepTA.value = app.speech ?? ''
@@ -501,7 +589,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Offer tab
   const offerPanel = document.createElement('div')
-  offerPanel.className = 'p-5 space-y-3'
+  offerPanel.className = 'p-6 space-y-4'
   const offerTA = document.createElement('textarea')
   offerTA.className = 'input min-h-[150px] w-full whitespace-pre-wrap'
   offerTA.value = app.job_description ?? ''
@@ -524,7 +612,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Interviews tab
   const interviewsPanel = document.createElement('div')
-  interviewsPanel.className = 'p-5 space-y-3'
+  interviewsPanel.className = 'p-6 space-y-4'
 
   const renderInterviews = (list: Interview[]) => {
     interviewsPanel.innerHTML = ''
@@ -533,13 +621,13 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     addBtn.innerHTML = `${icons.plus} ${t('detail.add')}`
     addBtn.addEventListener('click', () => {
       const { el, getData } = buildInterviewForm()
-      const overlay = openModal({ title: t('detail.interview_add_title'), content: el })
+      const modal = openModal({ title: t('detail.interview_add_title'), content: el })
       el.querySelector('[data-save]')?.addEventListener('click', async () => {
         try {
           const data = getData()
           const created = await api.interviews.create(id, data)
           list.push(created)
-          overlay.remove()
+          modal.close()
           renderInterviews(list)
           toast(t('detail.interview_add_title'), 'success')
         } catch {
@@ -561,13 +649,14 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     ivList.className = 'space-y-3'
     list.forEach(iv => {
       const card = document.createElement('div')
-      card.className = 'border border-border rounded-xl p-4 hover:border-border/80 transition-all duration-150'
+      card.className = 'border border-border/50 rounded p-4 backdrop-blur-sm'
+      card.style.background = 'rgb(var(--color-surface-1) / 0.4)'
       card.innerHTML = `
         <div class="flex items-start justify-between gap-2">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap mb-1.5">
               <span class="text-sm font-semibold text-primary">${t('detail.round')} ${iv.round}</span>
-              <span class="text-xs text-muted bg-surface-2 rounded-md px-2 py-0.5 font-medium">${iv.type}</span>
+              <span class="text-xs text-muted bg-surface-2 rounded px-2 py-0.5 font-medium">${iv.type}</span>
               ${iv.outcome ? `<span class="badge ${OUTCOME_COLORS[iv.outcome] ?? ''}">${iv.outcome}</span>` : ''}
             </div>
             ${iv.scheduled_at ? `<p class="text-xs text-muted mt-1 tabular-nums">${new Date(iv.scheduled_at).toLocaleString(dateFmt)}${iv.duration_minutes ? ` \u00b7 ${iv.duration_minutes} min` : ''}</p>` : ''}
@@ -582,13 +671,13 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       `
       card.querySelector(`[data-edit-iv="${iv.id}"]`)?.addEventListener('click', () => {
         const { el, getData } = buildInterviewForm(iv)
-        const overlay = openModal({ title: t('detail.interview_edit_title'), content: el })
+        const modal = openModal({ title: t('detail.interview_edit_title'), content: el })
         el.querySelector('[data-save]')?.addEventListener('click', async () => {
           try {
             const data = getData()
             const updated = await api.interviews.update(iv.id, data)
             Object.assign(iv, updated)
-            overlay.remove()
+            modal.close()
             renderInterviews(list)
             toast(t('detail.interview_edit_title'), 'success')
           } catch {
@@ -606,14 +695,14 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             <button data-confirm class="btn-danger">${t('detail.delete')}</button>
           </div>
         `
-        const overlay = openModal({ title: t('detail.confirm_delete_interview'), content: confirmEl })
-        confirmEl.querySelector('[data-cancel]')?.addEventListener('click', () => overlay.remove())
+        const modal = openModal({ title: t('detail.confirm_delete_interview'), content: confirmEl })
+        confirmEl.querySelector('[data-cancel]')?.addEventListener('click', () => modal.close())
         confirmEl.querySelector('[data-confirm]')?.addEventListener('click', async () => {
           try {
             await api.interviews.delete(iv.id)
             const idx = list.findIndex(x => x.id === iv.id)
             if (idx !== -1) list.splice(idx, 1)
-            overlay.remove()
+            modal.close()
             renderInterviews(list)
           } catch {
             toast(t('form.error'), 'error')
@@ -629,7 +718,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Contacts tab
   const contactsPanel = document.createElement('div')
-  contactsPanel.className = 'p-5 space-y-3'
+  contactsPanel.className = 'p-6 space-y-4'
 
   const renderContacts = (list: Contact[]) => {
     contactsPanel.innerHTML = ''
@@ -638,14 +727,14 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     addBtn.innerHTML = `${icons.plus} ${t('detail.add')}`
     addBtn.addEventListener('click', () => {
       const { el, getData } = buildContactForm()
-      const overlay = openModal({ title: t('detail.contact_add_title'), content: el })
+      const modal = openModal({ title: t('detail.contact_add_title'), content: el })
       el.querySelector('[data-save]')?.addEventListener('click', async () => {
         const data = getData()
         if (!data) { toast(t('form.field_required'), 'error'); return }
         try {
           const created = await api.contacts.create(id, data)
           list.push(created)
-          overlay.remove()
+          modal.close()
           renderContacts(list)
           toast(t('detail.contact_add_title'), 'success')
         } catch {
@@ -672,7 +761,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="text-sm font-medium text-primary">${esc(c.name)}</span>
-            ${c.role ? `<span class="text-xs text-muted bg-surface-2 rounded-md px-2 py-0.5">${esc(c.role)}</span>` : ''}
+            ${c.role ? `<span class="text-xs text-muted bg-surface-2 rounded px-2 py-0.5">${esc(c.role)}</span>` : ''}
           </div>
           <div class="flex items-center gap-3 mt-1 flex-wrap">
             ${c.email ? `<a href="mailto:${esc(c.email)}" class="text-xs text-accent hover:text-accent-hover transition-colors">${esc(c.email)}</a>` : ''}
@@ -687,14 +776,14 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       `
       row.querySelector(`[data-edit-c="${c.id}"]`)?.addEventListener('click', () => {
         const { el, getData } = buildContactForm(c)
-        const overlay = openModal({ title: t('detail.contact_edit_title'), content: el })
+        const modal = openModal({ title: t('detail.contact_edit_title'), content: el })
         el.querySelector('[data-save]')?.addEventListener('click', async () => {
           const data = getData()
           if (!data) { toast(t('form.field_required'), 'error'); return }
           try {
             const updated = await api.contacts.update(c.id, data)
             Object.assign(c, updated)
-            overlay.remove()
+            modal.close()
             renderContacts(list)
             toast(t('detail.contact_edit_title'), 'success')
           } catch {
@@ -712,14 +801,14 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             <button data-confirm class="btn-danger">${t('detail.delete')}</button>
           </div>
         `
-        const overlay = openModal({ title: t('detail.confirm_delete_contact'), content: confirmEl })
-        confirmEl.querySelector('[data-cancel]')?.addEventListener('click', () => overlay.remove())
+        const modal = openModal({ title: t('detail.confirm_delete_contact'), content: confirmEl })
+        confirmEl.querySelector('[data-cancel]')?.addEventListener('click', () => modal.close())
         confirmEl.querySelector('[data-confirm]')?.addEventListener('click', async () => {
           try {
             await api.contacts.delete(c.id)
             const idx = list.findIndex(x => x.id === c.id)
             if (idx !== -1) list.splice(idx, 1)
-            overlay.remove()
+            modal.close()
             renderContacts(list)
           } catch {
             toast(t('form.error'), 'error')
@@ -735,7 +824,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Timeline tab
   const timelinePanel = document.createElement('div')
-  timelinePanel.className = 'p-5 space-y-3'
+  timelinePanel.className = 'p-6 space-y-4'
   if (!app.timeline_events?.length) {
     timelinePanel.innerHTML = `<p class="text-sm text-muted/60">${t('detail.no_timeline')}</p>`
   } else {
@@ -780,7 +869,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   if (app.company_website || app.company_industry || app.company_size || app.company_location) {
     const companyCard = document.createElement('div')
     companyCard.className = 'card space-y-3'
-    companyCard.innerHTML = `<h3 class="text-sm font-semibold text-primary/70">${t('detail.company_info')}</h3>`
+    companyCard.innerHTML = `<h3 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('detail.company_info')}</h3>`
 
     if (app.company_website && sanitizeUrl(app.company_website)) {
       const row = document.createElement('div')
@@ -815,7 +904,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   if (sidebar.children.length) layout.appendChild(sidebar)
   content.appendChild(layout)
 
-  actions.querySelector('#delete-btn')?.addEventListener('click', () => {
+  topBar.querySelector('#delete-btn')?.addEventListener('click', () => {
     const confirmEl = document.createElement('div')
     confirmEl.className = 'space-y-5'
     confirmEl.innerHTML = `
@@ -825,12 +914,12 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         <button data-confirm class="btn-danger">${t('detail.delete')}</button>
       </div>
     `
-    const overlay = openModal({ title: t('detail.confirm_delete'), content: confirmEl })
-    confirmEl.querySelector('[data-cancel]')?.addEventListener('click', () => overlay.remove())
+    const modal = openModal({ title: t('detail.confirm_delete'), content: confirmEl })
+    confirmEl.querySelector('[data-cancel]')?.addEventListener('click', () => modal.close())
     confirmEl.querySelector('[data-confirm]')?.addEventListener('click', async () => {
       try {
         await api.applications.delete(app.id)
-        overlay.remove()
+        modal.close()
         navigate('/applications')
       } catch {
         toast(t('form.error'), 'error')
