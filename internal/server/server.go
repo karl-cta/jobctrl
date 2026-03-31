@@ -51,7 +51,17 @@ func New(db *sql.DB, frontendFS embed.FS, version string) http.Handler {
 	})
 
 	sub, _ := fs.Sub(frontendFS, "frontend/dist")
-	r.Handle("/*", http.FileServer(http.FS(sub)))
+	fileServer := http.FileServer(http.FS(sub))
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		// Serve static file if it exists, otherwise SPA fallback to index.html
+		if f, err := sub.Open(r.URL.Path[1:]); err == nil {
+			f.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
+	})
 
 	return r
 }
