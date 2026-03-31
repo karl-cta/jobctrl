@@ -31,12 +31,12 @@ function buildInterviewForm(iv?: Partial<Interview>): {
   el.innerHTML = `
     <div class="grid grid-cols-2 gap-3">
       <div>
-        <label class="label">${t('detail.interview_round')}</label>
-        <input name="round" class="input" type="number" min="1" value="${iv?.round ?? 1}" />
+        <label for="iv-round" class="label">${t('detail.interview_round')}</label>
+        <input id="iv-round" name="round" class="input" type="number" min="1" value="${iv?.round ?? 1}" />
       </div>
       <div>
-        <label class="label">${t('detail.interview_type')}</label>
-        <select name="type" class="select">
+        <label for="iv-type" class="label">${t('detail.interview_type')}</label>
+        <select id="iv-type" name="type" class="select">
           ${['Phone', 'Video', 'On-site', 'Technical', 'HR', 'Culture', 'Final'].map(type =>
             `<option value="${type}" ${iv?.type === type ? 'selected' : ''}>${type}</option>`
           ).join('')}
@@ -46,21 +46,21 @@ function buildInterviewForm(iv?: Partial<Interview>): {
     <div>
       <label class="label">${t('detail.interview_scheduled')}</label>
       <div class="grid grid-cols-2 gap-3">
-        <input name="scheduled_date" class="input" type="date"
+        <input id="iv-scheduled-date" name="scheduled_date" class="input" type="date" aria-label="${t('detail.interview_scheduled')} (date)"
           value="${iv?.scheduled_at ? new Date(iv.scheduled_at).toISOString().slice(0, 10) : ''}" />
-        <input name="scheduled_time" class="input" type="time"
+        <input id="iv-scheduled-time" name="scheduled_time" class="input" type="time" aria-label="${t('detail.interview_scheduled')} (time)"
           value="${iv?.scheduled_at ? new Date(iv.scheduled_at).toISOString().slice(11, 16) : ''}" />
       </div>
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div>
-        <label class="label">${t('detail.interview_duration')}</label>
-        <input name="duration_minutes" class="input" type="number" min="0" step="15"
+        <label for="iv-duration" class="label">${t('detail.interview_duration')}</label>
+        <input id="iv-duration" name="duration_minutes" class="input" type="number" min="0" step="15"
           value="${iv?.duration_minutes ?? ''}" />
       </div>
       <div>
-        <label class="label">${t('detail.interview_outcome')}</label>
-        <select name="outcome" class="select">
+        <label for="iv-outcome" class="label">${t('detail.interview_outcome')}</label>
+        <select id="iv-outcome" name="outcome" class="select">
           <option value="">${t('detail.interview_outcome_none')}</option>
           ${['Passed', 'Failed', 'Pending', 'Cancelled'].map(o =>
             `<option value="${o}" ${iv?.outcome === o ? 'selected' : ''}>${o}</option>`
@@ -70,17 +70,17 @@ function buildInterviewForm(iv?: Partial<Interview>): {
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div>
-        <label class="label">${t('detail.interview_interviewer')}</label>
-        <input name="interviewer_name" class="input" value="${esc(iv?.interviewer_name)}" />
+        <label for="iv-interviewer" class="label">${t('detail.interview_interviewer')}</label>
+        <input id="iv-interviewer" name="interviewer_name" class="input" value="${esc(iv?.interviewer_name)}" />
       </div>
       <div>
-        <label class="label">${t('detail.interview_role')}</label>
-        <input name="interviewer_role" class="input" value="${esc(iv?.interviewer_role)}" />
+        <label for="iv-role" class="label">${t('detail.interview_role')}</label>
+        <input id="iv-role" name="interviewer_role" class="input" value="${esc(iv?.interviewer_role)}" />
       </div>
     </div>
     <div>
-      <label class="label">${t('detail.interview_notes')}</label>
-      <textarea name="notes" class="input min-h-[60px]">${esc(iv?.notes)}</textarea>
+      <label for="iv-notes" class="label">${t('detail.interview_notes')}</label>
+      <textarea id="iv-notes" name="notes" class="input min-h-[60px]">${esc(iv?.notes)}</textarea>
     </div>
     <div class="flex justify-end pt-2">
       <button type="button" data-save class="btn-primary">${t('detail.save')}</button>
@@ -114,32 +114,32 @@ function buildContactForm(c?: Partial<Contact>): {
   el.className = 'space-y-4'
   el.innerHTML = `
     <div>
-      <label class="label">${t('detail.contact_name')} *</label>
-      <input name="name" class="input" required value="${esc(c?.name)}" />
+      <label for="ct-name" class="label">${t('detail.contact_name')} *</label>
+      <input id="ct-name" name="name" class="input" required value="${esc(c?.name)}" />
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div>
-        <label class="label">${t('detail.contact_role')}</label>
-        <input name="role" class="input" value="${esc(c?.role)}" />
+        <label for="ct-role" class="label">${t('detail.contact_role')}</label>
+        <input id="ct-role" name="role" class="input" value="${esc(c?.role)}" />
       </div>
       <div>
-        <label class="label">${t('detail.contact_email')}</label>
-        <input name="email" class="input" type="email" value="${esc(c?.email)}" />
+        <label for="ct-email" class="label">${t('detail.contact_email')}</label>
+        <input id="ct-email" name="email" class="input" type="email" value="${esc(c?.email)}" />
       </div>
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div>
-        <label class="label">${t('detail.contact_phone')}</label>
-        <input name="phone" class="input" value="${esc(c?.phone)}" />
+        <label for="ct-phone" class="label">${t('detail.contact_phone')}</label>
+        <input id="ct-phone" name="phone" class="input" value="${esc(c?.phone)}" />
       </div>
       <div>
-        <label class="label">${t('detail.contact_linkedin')}</label>
-        <input name="linkedin" class="input" value="${esc(c?.linkedin)}" />
+        <label for="ct-linkedin" class="label">${t('detail.contact_linkedin')}</label>
+        <input id="ct-linkedin" name="linkedin" class="input" value="${esc(c?.linkedin)}" />
       </div>
     </div>
     <div>
-      <label class="label">${t('detail.contact_notes')}</label>
-      <textarea name="notes" class="input min-h-[60px]">${esc(c?.notes)}</textarea>
+      <label for="ct-notes" class="label">${t('detail.contact_notes')}</label>
+      <textarea id="ct-notes" name="notes" class="input min-h-[60px]">${esc(c?.notes)}</textarea>
     </div>
     <div class="flex justify-end pt-2">
       <button type="button" data-save class="btn-primary">${t('detail.save')}</button>
@@ -170,16 +170,21 @@ function makeTabs(tabs: Array<{ id: string; label: string; panel: HTMLElement }>
 
   const panels: HTMLElement[] = []
 
-  tabs.forEach((tab, i) => {
-    const btn = document.createElement('button')
-    btn.className = `px-4 py-3 text-sm font-medium border-b-2 transition-all duration-150 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-inset ${
-      i === 0
+  const tabClass = (active: boolean) =>
+    `px-4 py-3 text-sm font-medium border-b-2 transition-all duration-150 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-inset ${
+      active
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-primary hover:border-surface-3'
     }`
+
+  tabs.forEach((tab, i) => {
+    const btn = document.createElement('button')
+    btn.className = tabClass(i === 0)
     btn.setAttribute('role', 'tab')
+    btn.id = `tab-${tab.id}`
     btn.setAttribute('aria-selected', i === 0 ? 'true' : 'false')
     btn.setAttribute('aria-controls', `tab-panel-${tab.id}`)
+    btn.setAttribute('tabindex', i === 0 ? '0' : '-1')
     btn.dataset.tab = tab.id
     btn.textContent = tab.label
 
@@ -192,24 +197,40 @@ function makeTabs(tabs: Array<{ id: string; label: string; panel: HTMLElement }>
     panels.push(tab.panel)
   })
 
-  bar.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest('[data-tab]') as HTMLElement | null
-    if (!btn) return
-    const activeId = btn.dataset.tab!
-
-    bar.querySelectorAll('[data-tab]').forEach(b => {
-      const isActive = (b as HTMLElement).dataset.tab === activeId
+  function activateTab(activeId: string) {
+    bar.querySelectorAll<HTMLElement>('[data-tab]').forEach(b => {
+      const isActive = b.dataset.tab === activeId
       b.setAttribute('aria-selected', isActive ? 'true' : 'false')
-      b.className = `px-4 py-3 text-sm font-medium border-b-2 transition-all duration-150 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-inset ${
-        isActive
-          ? 'border-accent text-accent'
-          : 'border-transparent text-muted hover:text-primary hover:border-surface-3'
-      }`
+      b.setAttribute('tabindex', isActive ? '0' : '-1')
+      b.className = tabClass(isActive)
     })
-
     panels.forEach(p => {
       p.hidden = p.id !== `tab-panel-${activeId}`
     })
+  }
+
+  bar.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('[data-tab]') as HTMLElement | null
+    if (!btn) return
+    activateTab(btn.dataset.tab!)
+  })
+
+  bar.addEventListener('keydown', (e) => {
+    const tabBtns = Array.from(bar.querySelectorAll<HTMLElement>('[data-tab]'))
+    const current = tabBtns.findIndex(b => b.getAttribute('aria-selected') === 'true')
+    let next = -1
+
+    switch (e.key) {
+      case 'ArrowRight': next = (current + 1) % tabBtns.length; break
+      case 'ArrowLeft': next = (current - 1 + tabBtns.length) % tabBtns.length; break
+      case 'Home': next = 0; break
+      case 'End': next = tabBtns.length - 1; break
+      default: return
+    }
+
+    e.preventDefault()
+    activateTab(tabBtns[next].dataset.tab!)
+    tabBtns[next].focus()
   })
 
   wrapper.appendChild(bar)
@@ -237,7 +258,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   content.className = 'space-y-6 max-w-5xl stagger'
 
   const header = document.createElement('div')
-  header.className = 'flex flex-col sm:flex-row sm:items-start justify-between gap-4'
+  header.className = 'flex flex-col sm:flex-row sm:items-start justify-between gap-4 relative z-10'
 
   // Status dropdown
   const statusWrapper = document.createElement('div')
@@ -249,41 +270,85 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   statusBtn.setAttribute('aria-haspopup', 'true')
   statusBtn.setAttribute('aria-expanded', 'false')
 
+  const statusDotColors: Record<string, string> = {
+    Wishlist: 'bg-stone-400',
+    Applied: 'bg-sky-500',
+    Screening: 'bg-amber-500',
+    Interviewing: 'bg-orange-500',
+    Offer: 'bg-emerald-500',
+    Accepted: 'bg-teal-500',
+    Rejected: 'bg-rose-400',
+    Withdrawn: 'bg-stone-400',
+  }
+
+  const checkSvg = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5 text-accent shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>'
+
   const statusDropdown = document.createElement('div')
-  statusDropdown.className = 'hidden absolute top-full left-0 mt-1.5 z-20 bg-surface-1 border border-border rounded-xl py-1.5 min-w-[160px]'
+  statusDropdown.className = 'hidden absolute top-full left-0 mt-2 z-40 bg-surface-1 border border-border rounded-xl py-1 min-w-[200px]'
   statusDropdown.style.boxShadow = 'var(--shadow-elevated)'
   statusDropdown.setAttribute('role', 'menu')
 
-  ALL_STATUSES.forEach(s => {
-    const item = document.createElement('button')
-    item.className = `w-full text-left px-3 py-2 text-sm hover:bg-surface-2 transition-colors ${s === app.status ? 'font-semibold text-accent' : 'text-primary'}`
-    item.setAttribute('role', 'menuitem')
-    item.textContent = statusLabel(s)
-    item.addEventListener('click', async () => {
-      statusDropdown.classList.add('hidden')
-      statusBtn.setAttribute('aria-expanded', 'false')
-      try {
-        await api.applications.update(id, { ...app, status: s })
-        app.status = s
-        statusBtn.className = `badge ${STATUS_COLORS[s]} cursor-pointer hover:opacity-80 transition-all duration-150`
-        statusBtn.textContent = statusLabel(s)
-        item.className = `w-full text-left px-3 py-2 text-sm hover:bg-surface-2 transition-colors font-semibold text-accent`
-        statusDropdown.querySelectorAll('button').forEach(b => {
-          if (b !== item) b.className = 'w-full text-left px-3 py-2 text-sm hover:bg-surface-2 transition-colors text-primary'
-        })
-        toast(statusLabel(s), 'success')
-      } catch {
-        toast(t('form.error'), 'error')
-      }
+  function renderStatusItems() {
+    statusDropdown.innerHTML = ''
+    ALL_STATUSES.forEach(s => {
+      const isCurrent = s === app!.status
+      const item = document.createElement('button')
+      item.className = `w-full text-left px-3 py-2 text-sm rounded-lg mx-0 hover:bg-surface-2 transition-colors flex items-center gap-2.5 ${isCurrent ? 'font-semibold text-accent' : 'text-primary'}`
+      item.setAttribute('role', 'menuitem')
+      item.innerHTML = `
+        <span class="w-2 h-2 rounded-full ${statusDotColors[s] || 'bg-accent'} shrink-0"></span>
+        <span class="flex-1">${statusLabel(s)}</span>
+        ${isCurrent ? checkSvg : '<span class="w-3.5"></span>'}
+      `
+      item.addEventListener('click', async () => {
+        statusDropdown.classList.add('hidden')
+        statusBtn.setAttribute('aria-expanded', 'false')
+        try {
+          await api.applications.update(id, { ...app!, status: s })
+          app!.status = s
+          statusBtn.className = `badge ${STATUS_COLORS[s]} cursor-pointer hover:opacity-80 transition-all duration-150`
+          statusBtn.textContent = statusLabel(s)
+          renderStatusItems()
+          const celebrate: Record<string, string> = { Offer: t('list.celebrate_offer'), Accepted: t('list.celebrate_accepted') }
+          toast(celebrate[s] || statusLabel(s), 'success')
+        } catch {
+          toast(t('form.error'), 'error')
+        }
+      })
+      statusDropdown.appendChild(item)
     })
-    statusDropdown.appendChild(item)
-  })
+  }
+  renderStatusItems()
 
   statusBtn.addEventListener('click', (e) => {
     e.stopPropagation()
     const open = !statusDropdown.classList.contains('hidden')
     statusDropdown.classList.toggle('hidden', open)
     statusBtn.setAttribute('aria-expanded', open ? 'false' : 'true')
+    if (!open) {
+      const current = statusDropdown.querySelector<HTMLElement>('.font-semibold') || statusDropdown.querySelector<HTMLElement>('[role="menuitem"]')
+      current?.focus()
+    }
+  })
+  statusDropdown.addEventListener('keydown', (e) => {
+    const items = Array.from(statusDropdown.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+    const current = items.indexOf(document.activeElement as HTMLElement)
+    let next = -1
+    switch (e.key) {
+      case 'ArrowDown': next = current < items.length - 1 ? current + 1 : 0; break
+      case 'ArrowUp': next = current > 0 ? current - 1 : items.length - 1; break
+      case 'Home': next = 0; break
+      case 'End': next = items.length - 1; break
+      case 'Escape':
+        statusDropdown.classList.add('hidden')
+        statusBtn.setAttribute('aria-expanded', 'false')
+        statusBtn.focus()
+        e.stopPropagation()
+        return
+      default: return
+    }
+    e.preventDefault()
+    items[next]?.focus()
   })
   document.addEventListener('click', () => {
     statusDropdown.classList.add('hidden')
@@ -339,7 +404,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const chip = (label: string, value: string) => {
     const d = document.createElement('div')
     d.className = 'bg-surface-2/60 rounded-lg px-3.5 py-2.5'
-    d.innerHTML = `<p class="text-[11px] text-muted uppercase tracking-wider mb-0.5 font-medium">${esc(label)}</p><p class="text-sm text-primary font-medium">${esc(value)}</p>`
+    d.innerHTML = `<p class="text-xs text-muted mb-0.5 font-medium">${esc(label)}</p><p class="text-sm text-primary font-medium">${esc(value)}</p>`
     return d
   }
 
@@ -359,7 +424,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     const linkChip = document.createElement('div')
     linkChip.className = 'bg-surface-2/60 rounded-lg px-3.5 py-2.5'
     linkChip.innerHTML = `
-      <p class="text-[11px] text-muted uppercase tracking-wider mb-0.5 font-medium">${t('detail.job_link')}</p>
+      <p class="text-xs text-muted mb-0.5 font-medium">${t('detail.job_link')}</p>
       <a href="${esc(sanitizeUrl(app.job_url))}" target="_blank" rel="noopener noreferrer"
          class="text-sm text-accent hover:text-accent-hover font-medium flex items-center gap-1.5 transition-colors">
         ${icons.globe} ${safeHostname(app.job_url)}
@@ -381,6 +446,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     notesTA.className = 'input min-h-[150px] w-full'
     notesTA.value = app.notes ?? ''
     notesTA.placeholder = t('detail.no_notes')
+    notesTA.setAttribute('aria-label', t('detail.tab_notes'))
     const notesSaveBtn = document.createElement('button')
     notesSaveBtn.className = 'btn-primary text-sm'
     notesSaveBtn.textContent = t('detail.save')
@@ -404,6 +470,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   prepTA.className = 'input min-h-[150px] w-full font-mono text-sm'
   prepTA.value = app.speech ?? ''
   prepTA.placeholder = t('detail.no_prep')
+  prepTA.setAttribute('aria-label', t('detail.tab_prep'))
   const prepSaveBtn = document.createElement('button')
   prepSaveBtn.className = 'btn-primary text-sm'
   prepSaveBtn.textContent = t('detail.save')
@@ -418,6 +485,29 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   })
   prepPanel.appendChild(prepTA)
   prepPanel.appendChild(prepSaveBtn)
+
+  // Offer tab
+  const offerPanel = document.createElement('div')
+  offerPanel.className = 'p-5 space-y-3'
+  const offerTA = document.createElement('textarea')
+  offerTA.className = 'input min-h-[150px] w-full whitespace-pre-wrap'
+  offerTA.value = app.job_description ?? ''
+  offerTA.placeholder = t('detail.no_offer')
+  offerTA.setAttribute('aria-label', t('detail.tab_offer'))
+  const offerSaveBtn = document.createElement('button')
+  offerSaveBtn.className = 'btn-primary text-sm'
+  offerSaveBtn.textContent = t('detail.save')
+  offerSaveBtn.addEventListener('click', async () => {
+    try {
+      await api.applications.update(id, { ...app, job_description: offerTA.value || undefined })
+      app.job_description = offerTA.value || undefined
+      toast(t('detail.save'), 'success')
+    } catch {
+      toast(t('form.error'), 'error')
+    }
+  })
+  offerPanel.appendChild(offerTA)
+  offerPanel.appendChild(offerSaveBtn)
 
   // Interviews tab
   const interviewsPanel = document.createElement('div')
@@ -472,8 +562,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             ${iv.notes ? `<p class="text-xs text-muted/70 mt-2 line-clamp-2">${esc(iv.notes)}</p>` : ''}
           </div>
           <div class="flex gap-1 shrink-0">
-            <button class="btn-ghost p-1.5" data-edit-iv="${iv.id}" aria-label="${t('detail.edit')}">${icons.edit}</button>
-            <button class="btn-danger p-1.5" data-del-iv="${iv.id}" aria-label="${t('detail.delete')}">${icons.trash}</button>
+            <button class="btn-ghost p-1.5 min-w-[44px] min-h-[44px]" data-edit-iv="${iv.id}" aria-label="${t('detail.edit')}">${icons.edit}</button>
+            <button class="btn-danger p-1.5 min-w-[44px] min-h-[44px]" data-del-iv="${iv.id}" aria-label="${t('detail.delete')}">${icons.trash}</button>
           </div>
         </div>
       `
@@ -578,8 +668,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
           </div>
         </div>
         <div class="flex gap-1 shrink-0">
-          <button class="btn-ghost p-1.5" data-edit-c="${c.id}" aria-label="${t('detail.edit')}">${icons.edit}</button>
-          <button class="btn-danger p-1.5" data-del-c="${c.id}" aria-label="${t('detail.delete')}">${icons.trash}</button>
+          <button class="btn-ghost p-1.5 min-w-[44px] min-h-[44px]" data-edit-c="${c.id}" aria-label="${t('detail.edit')}">${icons.edit}</button>
+          <button class="btn-danger p-1.5 min-w-[44px] min-h-[44px]" data-del-c="${c.id}" aria-label="${t('detail.delete')}">${icons.trash}</button>
         </div>
       `
       row.querySelector(`[data-edit-c="${c.id}"]`)?.addEventListener('click', () => {
@@ -661,6 +751,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const tabs = makeTabs([
     { id: 'notes', label: t('detail.tab_notes'), panel: notesPanel },
     { id: 'prep', label: t('detail.tab_prep'), panel: prepPanel },
+    { id: 'offer', label: t('detail.tab_offer'), panel: offerPanel },
     { id: 'interviews', label: `${t('detail.tab_interviews')}${app.interviews?.length ? ` (${app.interviews.length})` : ''}`, panel: interviewsPanel },
     { id: 'contacts', label: `${t('detail.tab_contacts')}${app.contacts?.length ? ` (${app.contacts.length})` : ''}`, panel: contactsPanel },
     { id: 'timeline', label: t('detail.tab_timeline'), panel: timelinePanel },
@@ -676,12 +767,12 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   if (app.company_website || app.company_industry || app.company_size || app.company_location) {
     const companyCard = document.createElement('div')
     companyCard.className = 'card space-y-3'
-    companyCard.innerHTML = `<h3 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('detail.company_info')}</h3>`
+    companyCard.innerHTML = `<h3 class="text-sm font-semibold text-primary/70">${t('detail.company_info')}</h3>`
 
     if (app.company_website && sanitizeUrl(app.company_website)) {
       const row = document.createElement('div')
       row.innerHTML = `
-        <p class="text-[11px] text-muted/60 mb-0.5 font-medium">${t('form.company_website')}</p>
+        <p class="text-xs text-muted mb-0.5 font-medium">${t('form.company_website')}</p>
         <a href="${esc(sanitizeUrl(app.company_website))}" target="_blank" rel="noopener noreferrer"
            class="text-sm text-accent hover:text-accent-hover flex items-center gap-1.5 transition-colors font-medium">
           ${icons.globe} ${safeHostname(app.company_website)}
@@ -691,17 +782,17 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     }
     if (app.company_industry) {
       const row = document.createElement('div')
-      row.innerHTML = `<p class="text-[11px] text-muted/60 mb-0.5 font-medium">${t('form.company_industry')}</p><p class="text-sm text-primary">${esc(app.company_industry)}</p>`
+      row.innerHTML = `<p class="text-xs text-muted mb-0.5 font-medium">${t('form.company_industry')}</p><p class="text-sm text-primary">${esc(app.company_industry)}</p>`
       companyCard.appendChild(row)
     }
     if (app.company_size) {
       const row = document.createElement('div')
-      row.innerHTML = `<p class="text-[11px] text-muted/60 mb-0.5 font-medium">${t('form.company_size')}</p><p class="text-sm text-primary">${esc(app.company_size)}</p>`
+      row.innerHTML = `<p class="text-xs text-muted mb-0.5 font-medium">${t('form.company_size')}</p><p class="text-sm text-primary">${esc(app.company_size)}</p>`
       companyCard.appendChild(row)
     }
     if (app.company_location) {
       const row = document.createElement('div')
-      row.innerHTML = `<p class="text-[11px] text-muted/60 mb-0.5 font-medium">${t('form.company_location')}</p><p class="text-sm text-primary">${esc(app.company_location)}</p>`
+      row.innerHTML = `<p class="text-xs text-muted mb-0.5 font-medium">${t('form.company_location')}</p><p class="text-sm text-primary">${esc(app.company_location)}</p>`
       companyCard.appendChild(row)
     }
     sidebar.appendChild(companyCard)

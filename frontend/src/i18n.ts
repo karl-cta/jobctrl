@@ -4,7 +4,7 @@ const fr: Translations = {
   // Nav
   'nav.dashboard': 'Tableau de bord',
   'nav.applications': 'Candidatures',
-  'nav.new': '+ Nouvelle',
+  'nav.new': 'Nouvelle',
   'nav.new_application': 'Nouvelle candidature',
   'nav.sidebar': 'Barre latérale',
   'nav.main': 'Navigation principale',
@@ -25,11 +25,14 @@ const fr: Translations = {
 
   // List
   'list.title': 'Candidatures',
-  'list.new': '+ Nouvelle candidature',
+  'list.new': 'Nouvelle candidature',
   'list.search': 'Rechercher entreprise ou poste...',
   'list.all_statuses': 'Tous les statuts',
-  'list.empty': 'Aucune candidature',
+  'list.empty': 'Aucune candidature pour l\'instant',
+  'list.empty_hint': 'C\'est le moment de commencer, chaque candidature compte.',
   'list.add_first': 'Ajouter la première',
+  'list.celebrate_offer': 'Offre reçue, bravo !',
+  'list.celebrate_accepted': 'Félicitations, c\'est gagné !',
   'list.confirm_delete': 'Supprimer cette candidature ?',
   'list.view_table': 'Vue tableau',
   'list.view_kanban': 'Vue kanban',
@@ -54,6 +57,7 @@ const fr: Translations = {
   'detail.tab_prep': 'Préparation',
   'detail.tab_interviews': 'Entretiens',
   'detail.tab_contacts': 'Contacts',
+  'detail.tab_offer': 'Offre',
   'detail.tab_timeline': 'Historique',
   'detail.add': 'Ajouter',
   'detail.applied_at': 'Candidaté le',
@@ -83,6 +87,7 @@ const fr: Translations = {
   'detail.contact_notes': 'Notes',
   'detail.no_notes': 'Aucune note.',
   'detail.no_prep': 'Aucune préparation.',
+  'detail.no_offer': "Collez ici le texte de l'offre pour le retrouver facilement.",
   'detail.no_interviews': 'Aucun entretien.',
   'detail.no_contacts': 'Aucun contact.',
   'detail.no_timeline': 'Aucun historique.',
@@ -148,7 +153,7 @@ const en: Translations = {
   // Nav
   'nav.dashboard': 'Dashboard',
   'nav.applications': 'Applications',
-  'nav.new': '+ New',
+  'nav.new': 'New',
   'nav.new_application': 'New application',
   'nav.sidebar': 'Sidebar',
   'nav.main': 'Main navigation',
@@ -169,11 +174,14 @@ const en: Translations = {
 
   // List
   'list.title': 'Applications',
-  'list.new': '+ New application',
+  'list.new': 'New application',
   'list.search': 'Search company or position...',
   'list.all_statuses': 'All statuses',
-  'list.empty': 'No applications',
+  'list.empty': 'No applications yet',
+  'list.empty_hint': 'Time to get started — every application counts.',
   'list.add_first': 'Add the first one',
+  'list.celebrate_offer': 'Offer received, well done!',
+  'list.celebrate_accepted': 'Congratulations, you did it!',
   'list.confirm_delete': 'Delete this application?',
   'list.view_table': 'Table view',
   'list.view_kanban': 'Kanban view',
@@ -198,6 +206,7 @@ const en: Translations = {
   'detail.tab_prep': 'Prep',
   'detail.tab_interviews': 'Interviews',
   'detail.tab_contacts': 'Contacts',
+  'detail.tab_offer': 'Job offer',
   'detail.tab_timeline': 'Timeline',
   'detail.add': 'Add',
   'detail.applied_at': 'Applied on',
@@ -227,6 +236,7 @@ const en: Translations = {
   'detail.contact_notes': 'Notes',
   'detail.no_notes': 'No notes yet.',
   'detail.no_prep': 'No prep notes yet.',
+  'detail.no_offer': 'Paste the job listing here so you can refer back to it.',
   'detail.no_interviews': 'No interviews yet.',
   'detail.no_contacts': 'No contacts yet.',
   'detail.no_timeline': 'No activity yet.',
@@ -291,6 +301,7 @@ const en: Translations = {
 const locales: Record<string, Translations> = { fr, en }
 
 let currentLocale = localStorage.getItem('jc-locale') || 'fr'
+document.documentElement.lang = currentLocale
 
 export function t(key: string): string {
   return locales[currentLocale]?.[key] ?? locales.fr[key] ?? key
@@ -299,6 +310,7 @@ export function t(key: string): string {
 export function setLocale(locale: string) {
   currentLocale = locale
   localStorage.setItem('jc-locale', locale)
+  document.documentElement.lang = locale
 }
 
 export function getLocale(): string {
