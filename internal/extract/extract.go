@@ -45,31 +45,6 @@ func FromURL(rawURL string) (*Result, error) {
 		return nil, fmt.Errorf("invalid URL")
 	}
 
-	req, err := http.NewRequest("GET", rawURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("invalid URL")
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; JobCtrl/1.0)")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9,fr;q=0.8")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("could not fetch URL: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("URL returned status %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024)) // 2MB max
-	if err != nil {
-		return nil, fmt.Errorf("error reading page: %w", err)
-	}
-
-	page := string(body)
-
 	result := &Result{}
 
 	// Source = domain name
@@ -77,6 +52,32 @@ func FromURL(rawURL string) (*Result, error) {
 	if source != "" {
 		result.Source = &source
 	}
+
+	req, err := http.NewRequest("GET", rawURL, nil)
+	if err != nil {
+		return result, nil // return what we have (source)
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,fr;q=0.8")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return result, nil // return what we have (source)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		// Still return partial result (source) — don't fail entirely
+		return result, nil
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024)) // 2MB max
+	if err != nil {
+		return result, nil
+	}
+
+	page := string(body)
 
 	// Try JSON-LD first (most reliable)
 	if ld := extractJobPostingLD(page); ld != nil {

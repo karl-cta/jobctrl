@@ -14,9 +14,11 @@ const fr: Translations = {
   // Dashboard
   'dashboard.title': 'Tableau de bord',
   'dashboard.total': 'Total candidatures',
-  'dashboard.active_interviews': 'Entretiens actifs',
+  'dashboard.active_interviews_one': 'Entretien actif',
+  'dashboard.active_interviews_other': 'Entretiens actifs',
   'dashboard.response_rate': 'Taux de réponse',
-  'dashboard.offers': 'Offres reçues',
+  'dashboard.offers_one': 'Offre reçue',
+  'dashboard.offers_other': 'Offres reçues',
   'dashboard.pipeline': 'Pipeline de candidature',
   'dashboard.top_sources': 'Top sources',
   'dashboard.over_time': 'Candidatures dans le temps',
@@ -146,6 +148,7 @@ const fr: Translations = {
   'form.extract_success': 'Champs remplis depuis l\'offre',
   'form.extract_error': 'Impossible d\'extraire les infos',
   'form.extract_empty': 'Aucune info trouvée sur cette page',
+  'form.extract_partial': 'Ce site bloque l\'extraction — URL et source remplies, le reste est à compléter',
 
   // Statuses
   'status.Wishlist': 'Wishlist',
@@ -182,9 +185,11 @@ const en: Translations = {
   // Dashboard
   'dashboard.title': 'Dashboard',
   'dashboard.total': 'Total applications',
-  'dashboard.active_interviews': 'Active interviews',
+  'dashboard.active_interviews_one': 'Active interview',
+  'dashboard.active_interviews_other': 'Active interviews',
   'dashboard.response_rate': 'Response rate',
-  'dashboard.offers': 'Offers received',
+  'dashboard.offers_one': 'Offer received',
+  'dashboard.offers_other': 'Offers received',
   'dashboard.pipeline': 'Application pipeline',
   'dashboard.top_sources': 'Top sources',
   'dashboard.over_time': 'Applications over time',
@@ -314,6 +319,7 @@ const en: Translations = {
   'form.extract_success': 'Fields filled from job listing',
   'form.extract_error': 'Could not extract info',
   'form.extract_empty': 'No info found on this page',
+  'form.extract_partial': 'This site blocks extraction — URL and source filled, complete the rest manually',
 
   // Statuses
   'status.Wishlist': 'Wishlist',
@@ -343,6 +349,10 @@ document.documentElement.lang = currentLocale
 
 export function t(key: string): string {
   return locales[currentLocale]?.[key] ?? locales.fr[key] ?? key
+}
+
+export function tp(key: string, count: number): string {
+  return count <= 1 ? t(`${key}_one`) : t(`${key}_other`)
 }
 
 export function setLocale(locale: string) {

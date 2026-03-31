@@ -219,25 +219,25 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
 
       try {
         const data = await api.extract(url)
-        const filled = [
-          data.company_name, data.job_title, data.location,
-          data.company_website, data.source
-        ].filter(Boolean).length
+        // Count meaningful fields (not just source/url)
+        const meaningful = [data.company_name, data.job_title, data.location, data.company_website].filter(Boolean).length
 
-        if (filled === 0) {
-          toast(t('form.extract_empty'), 'info')
+        // Always fill what we got
+        setField('f-company-name', data.company_name)
+        setField('f-company-website', data.company_website)
+        setField('f-company-location', data.company_location)
+        setField('f-job-title', data.job_title)
+        setField('f-job-url', url)
+        setField('f-job-description', data.job_description)
+        setField('f-location', data.location)
+        setField('f-source', data.source)
+        if (data.contract_type) setField('f-contract-type', data.contract_type)
+        if (data.work_mode) setField('f-work-mode', data.work_mode)
+        if (data.salary) setField('f-salary', String(data.salary))
+
+        if (meaningful === 0) {
+          toast(t('form.extract_partial'), 'info')
         } else {
-          setField('f-company-name', data.company_name)
-          setField('f-company-website', data.company_website)
-          setField('f-company-location', data.company_location)
-          setField('f-job-title', data.job_title)
-          setField('f-job-url', url)
-          setField('f-job-description', data.job_description)
-          setField('f-location', data.location)
-          setField('f-source', data.source)
-          if (data.contract_type) setField('f-contract-type', data.contract_type)
-          if (data.work_mode) setField('f-work-mode', data.work_mode)
-          if (data.salary) setField('f-salary', String(data.salary))
           toast(t('form.extract_success'), 'success')
         }
       } catch {

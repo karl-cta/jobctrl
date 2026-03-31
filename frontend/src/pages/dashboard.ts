@@ -1,6 +1,6 @@
 import { api } from '../api'
 import { createLayout } from '../components/layout'
-import { t } from '../i18n'
+import { t, tp } from '../i18n'
 import { esc } from '../sanitize'
 import { statusLabel, ALL_STATUSES } from '../types'
 import type { Stats } from '../types'
@@ -105,11 +105,14 @@ export async function DashboardPage(): Promise<HTMLElement> {
   const total = stats?.total ?? 0
   const overTime = stats?.over_time ?? []
 
+  const activeInterviews = stats?.active_interviews ?? 0
+  const offers = (stats?.by_status?.['Offer'] ?? 0) + (stats?.by_status?.['Accepted'] ?? 0)
+
   const statCards = [
     { label: t('dashboard.total'), value: total, color: 'accent' },
-    { label: t('dashboard.active_interviews'), value: stats?.active_interviews ?? 0, color: 'violet' },
+    { label: tp('dashboard.active_interviews', activeInterviews), value: activeInterviews, color: 'violet' },
     { label: t('dashboard.response_rate'), value: `${stats?.response_rate?.toFixed(0) ?? 0}%`, color: 'sky' },
-    { label: t('dashboard.offers'), value: (stats?.by_status?.['Offer'] ?? 0) + (stats?.by_status?.['Accepted'] ?? 0), color: 'emerald' },
+    { label: tp('dashboard.offers', offers), value: offers, color: 'emerald' },
   ]
 
   const colorMap: Record<string, { dot: string; text: string }> = {
