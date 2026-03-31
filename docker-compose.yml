@@ -1,6 +1,6 @@
 services:
   job-ctrl:
-    build: .
+    image: ghcr.io/karl-cta/jobctrl:latest
     ports:
       - "8080:8080"
     volumes:

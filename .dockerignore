@@ -1,0 +1,14 @@
+.git
+.github
+.gitignore
+.dockerignore
+node_modules
+frontend/node_modules
+frontend/dist
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+README.md
+LICENSE
+Makefile

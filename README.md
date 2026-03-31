@@ -2,17 +2,15 @@
 
 Suivi de candidatures auto-hébergé. Un binaire Go, une base SQLite, zéro dépendance cloud.
 
-![Go](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
+![Docker](https://img.shields.io/github/actions/workflow/status/karl-cta/jobctrl/docker.yml?label=Docker&logo=docker&logoColor=white)
 
 ---
 
 ## Lancer avec Docker
 
 ```bash
-git clone https://github.com/karl-cta/job-ctrl.git
-cd job-ctrl
 docker compose up -d
 ```
 
@@ -20,13 +18,32 @@ Ouvrir [http://localhost:8080](http://localhost:8080).
 
 Les données sont persistées dans un volume Docker (`job-ctrl-data`).
 
-## Lancer sans Docker
-
-**Prérequis** : Go 1.24+, Node.js 22+
+Pour une version spécifique :
 
 ```bash
-git clone https://github.com/karl-cta/job-ctrl.git
-cd job-ctrl
+docker pull ghcr.io/karl-cta/jobctrl:0.1.0
+```
+
+<details>
+<summary>Build local</summary>
+
+```bash
+git clone https://github.com/karl-cta/jobctrl.git
+cd jobctrl
+docker compose up -d --build
+```
+
+Ajouter `build: .` au service dans `docker-compose.yml` pour builder depuis les sources.
+
+</details>
+
+## Lancer sans Docker
+
+**Prérequis** : Go 1.26+, Node.js 22+
+
+```bash
+git clone https://github.com/karl-cta/jobctrl.git
+cd jobctrl
 make install   # npm install du frontend
 make build     # compile frontend + binaire Go
 ./job-ctrl     # lance le serveur sur :8080

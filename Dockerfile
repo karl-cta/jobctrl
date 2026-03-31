@@ -1,7 +1,7 @@
 FROM node:22-alpine AS frontend-builder
 WORKDIR /app/frontend
-COPY frontend/package.json .
-RUN npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
@@ -17,6 +17,11 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata curl
 WORKDIR /app
 COPY --from=go-builder /app/job-ctrl .
+
+LABEL org.opencontainers.image.source="https://github.com/karl-cta/jobctrl" \
+      org.opencontainers.image.description="Self-hosted job application tracker" \
+      org.opencontainers.image.licenses="MIT"
+
 ENV JOB_CTRL_DB_PATH=/data/job-ctrl.db
 ENV JOB_CTRL_ADDR=:8080
 EXPOSE 8080
