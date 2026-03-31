@@ -664,7 +664,7 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 		stats.OfferRate = float64(offers) / float64(applied) * 100
 	}
 
-	h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM interviews WHERE outcome IS NULL OR outcome = 'Pending'`).Scan(&stats.ActiveInterviews)
+	h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications WHERE status IN ('Screening', 'Interviewing')`).Scan(&stats.ActiveInterviews)
 
 	h.db.QueryRowContext(ctx, `SELECT AVG(salary_min), AVG(salary_max) FROM applications WHERE salary_min IS NOT NULL`).Scan(&stats.AvgSalaryMin, &stats.AvgSalaryMax)
 

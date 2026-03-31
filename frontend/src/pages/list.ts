@@ -7,7 +7,7 @@ import { esc } from '../sanitize'
 import { statusLabel, STATUS_COLORS, ALL_STATUSES, type Application, type ApplicationStatus } from '../types'
 
 export async function ListPage(): Promise<HTMLElement> {
-  let statusFilter = ''
+  let statusFilter = new URLSearchParams(window.location.search).get('status') || ''
   let searchQuery = ''
   let viewMode: 'table' | 'kanban' = (localStorage.getItem('jc-view') as 'table' | 'kanban') || 'table'
   let debounceTimer: ReturnType<typeof setTimeout> | null = null

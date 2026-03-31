@@ -57,7 +57,7 @@ export function createLayout(content: HTMLElement): HTMLElement {
 
     <footer class="border-t border-border mt-auto py-6">
       <div class="max-w-6xl mx-auto px-5 sm:px-8 flex items-center justify-between text-xs text-muted">
-        <span>Job<span class="text-accent font-semibold">Ctrl</span> <span id="app-version"></span></span>
+        <span>Job<span class="text-accent font-semibold">Ctrl</span> <span id="app-version" class="text-[0.65rem] text-muted/60 ml-1.5 font-normal"></span></span>
         <div class="flex items-center gap-3">
           <span>${t('common.open_source')}</span>
           <a href="https://github.com/karl-cta/jobctrl" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 hover:text-primary transition-colors" aria-label="${t('common.source_code')}">

@@ -17,8 +17,9 @@ export async function navigate(path: string) {
 
 async function render(path: string) {
   const app = document.getElementById('app')!
+  const pathname = path.split('?')[0]
   for (const route of routes) {
-    const match = path.match(route.pattern)
+    const match = pathname.match(route.pattern)
     if (match) {
       const params: Record<string, string> = {}
       route.keys.forEach((key, i) => { params[key] = match[i + 1] })

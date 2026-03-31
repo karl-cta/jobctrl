@@ -1,3 +1,5 @@
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
 .PHONY: install dev build run clean
 
 install:
@@ -7,12 +9,10 @@ dev:
 	@make -j2 dev-backend dev-frontend
 
 dev-backend:
-	JOB_CTRL_DB_PATH=./job-ctrl-dev.db go run .
+	JOB_CTRL_DB_PATH=./job-ctrl-dev.db go run -ldflags="-X main.Version=$(VERSION)" .
 
 dev-frontend:
 	cd frontend && npm run dev
-
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 build:
 	cd frontend && npm run build

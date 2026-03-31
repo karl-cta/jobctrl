@@ -163,10 +163,10 @@ export async function DashboardPage(): Promise<HTMLElement> {
           const count = stats?.by_status?.[s] ?? 0
           const c = pipelineColors[s]
           return `
-          <div class="rounded-xl text-center py-5 px-1 border-t-[3px] ${c.border} ${c.bg} transition-all duration-200 ${count === 0 ? 'opacity-30 hover:opacity-60' : 'hover:scale-[1.02]'}">
+          <a href="/applications?status=${s}" data-link class="block rounded-xl text-center py-5 px-1 border-t-[3px] ${c.border} ${c.bg} transition-all duration-200 no-underline ${count === 0 ? 'opacity-30 hover:opacity-60' : 'hover:scale-[1.02] cursor-pointer'}">
             <div class="text-2xl font-bold ${c.text} tabular-nums font-mono leading-none">${count}</div>
             <div class="text-xs ${c.label} mt-2 font-semibold">${statusLabel(s)}</div>
-          </div>`
+          </a>`
         }).join('')}
       </div>
     </div>
