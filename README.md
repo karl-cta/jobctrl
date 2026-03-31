@@ -1,88 +1,79 @@
 # Job-Ctrl
 
-Suivi de candidatures auto-hébergé. Un binaire Go, une base SQLite, zéro dépendance cloud.
+Self-hosted job application tracker. Single Go binary, SQLite database, zero cloud dependencies.
+
+![Job-Ctrl Dashboard](.github/jobctrl-dashboard.png)
 
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
 ![Docker](https://img.shields.io/github/actions/workflow/status/karl-cta/jobctrl/docker.yml?label=Docker&logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
 
----
+## Features
 
-## Lancer avec Docker
+- **Full application tracking** — status pipeline, interviews, contacts, timeline
+- **Auto-fill from URL** — paste a job listing URL, fields are extracted automatically (JSON-LD / Open Graph)
+- **Dashboard** — stats, pipeline view, charts
+- **Bilingual** — French & English
+- **Dark mode** — warm stone palette, no pure black
+- **Self-hosted** — your data stays on your machine, single binary, no accounts
+
+## Quick start
+
+### Docker (recommended)
 
 ```bash
 docker compose up -d
 ```
 
-Ouvrir [http://localhost:8080](http://localhost:8080).
+Open [http://localhost:8080](http://localhost:8080). Data is persisted in a Docker volume (`job-ctrl-data`).
 
-Les données sont persistées dans un volume Docker (`job-ctrl-data`).
+### From source
 
-Pour une version spécifique :
-
-```bash
-docker pull ghcr.io/karl-cta/jobctrl:0.0.1
-```
-
-<details>
-<summary>Build local</summary>
+Requires Go 1.26+, Node.js 22+
 
 ```bash
 git clone https://github.com/karl-cta/jobctrl.git
 cd jobctrl
-docker compose up -d --build
-```
-
-Ajouter `build: .` au service dans `docker-compose.yml` pour builder depuis les sources.
-
-</details>
-
-## Lancer sans Docker
-
-**Prérequis** : Go 1.26+, Node.js 22+
-
-```bash
-git clone https://github.com/karl-cta/jobctrl.git
-cd jobctrl
-make install   # npm install du frontend
-make build     # compile frontend + binaire Go
-./job-ctrl     # lance le serveur sur :8080
+make install   # frontend deps
+make build     # frontend + Go binary
+./job-ctrl     # starts on :8080
 ```
 
 ## Configuration
 
-| Variable | Défaut | Description |
-|----------|--------|-------------|
-| `JOB_CTRL_DB_PATH` | `job-ctrl.db` | Chemin du fichier SQLite |
-| `JOB_CTRL_ADDR` | `:8080` | Adresse d'écoute |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JOB_CTRL_DB_PATH` | `job-ctrl.db` | SQLite database path |
+| `JOB_CTRL_ADDR` | `:8080` | Listen address |
 
-## Développement
+## Development
 
 ```bash
-make install   # deps frontend
-make dev       # backend :8080 + frontend :5173 (hot reload)
+make dev       # Go :8080 + Vite :5173 with hot reload
 go test ./...  # tests
 ```
 
 ## API
 
-Toutes les routes sont sous `/api`, réponses en JSON.
+All routes under `/api`, JSON responses.
 
-| Méthode | Route | Description |
-|---------|-------|-------------|
-| `GET` | `/api/applications` | Liste (filtres: `status`, `search`, `sort`) |
-| `POST` | `/api/applications` | Créer |
-| `GET/PUT/DELETE` | `/api/applications/:id` | Détail / modifier / supprimer |
-| `GET/POST` | `/api/applications/:id/interviews` | Entretiens |
-| `GET/POST` | `/api/applications/:id/contacts` | Contacts |
-| `GET` | `/api/stats` | Statistiques dashboard |
-| `GET` | `/api/export` | Export JSON complet |
-| `GET` | `/api/health` | Health check |
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/applications` | List (filters: `status`, `search`, `sort`) |
+| `POST` | `/applications` | Create |
+| `GET/PUT/DELETE` | `/applications/:id` | Read / update / delete |
+| `POST` | `/extract` | Auto-fill from job URL |
+| `GET/POST` | `/applications/:id/interviews` | Interviews |
+| `GET/POST` | `/applications/:id/contacts` | Contacts |
+| `GET` | `/stats` | Dashboard stats |
+| `GET` | `/export` | Full JSON export |
+| `GET` | `/health` | Health check |
 
 ## Stack
 
-Go + [chi](https://github.com/go-chi/chi) / SQLite (pure Go, sans CGO) / TypeScript vanilla + Vite + Tailwind / Docker
+Go + [chi](https://github.com/go-chi/chi) · SQLite (pure Go, no CGO) · Vanilla TypeScript + Vite + Tailwind · Docker
 
-## Licence
+## License
 
 MIT
