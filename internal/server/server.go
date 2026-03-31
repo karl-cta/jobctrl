@@ -44,6 +44,8 @@ func New(db *sql.DB, frontendFS embed.FS, version string) http.Handler {
 		r.Put("/contacts/{id}", h.UpdateContact)
 		r.Delete("/contacts/{id}", h.DeleteContact)
 
+		r.Post("/extract", h.ExtractFromURL)
+
 		r.Get("/stats", h.GetStats)
 		r.Get("/export", h.Export)
 	})

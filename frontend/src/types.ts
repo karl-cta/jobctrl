@@ -28,8 +28,7 @@ export interface Application {
   contract_type: ContractType
   work_mode: WorkMode
   location?: string
-  salary_min?: number
-  salary_max?: number
+  salary?: number
   salary_currency: string
   status: ApplicationStatus
   applied_at?: string
@@ -86,8 +85,7 @@ export interface Stats {
   response_rate: number
   offer_rate: number
   active_interviews: number
-  avg_salary_min?: number
-  avg_salary_max?: number
+  avg_salary?: number
   salary_distribution?: Array<{ range: string; count: number }>
   top_sources: Array<{ source: string; count: number }>
   over_time?: Array<{ period: string; count: number }>

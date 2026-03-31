@@ -50,6 +50,8 @@ export const api = {
       request<Contact>(`/contacts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/contacts/${id}`, { method: 'DELETE' }),
   },
+  extract: (url: string) =>
+    request<Partial<Application>>('/extract', { method: 'POST', body: JSON.stringify({ url }) }),
   stats: () => request<Stats>('/stats'),
   export: () => request<unknown>('/export'),
 }

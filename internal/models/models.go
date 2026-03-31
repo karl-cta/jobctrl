@@ -67,8 +67,7 @@ type Application struct {
 	ContractType    ContractType      `json:"contract_type"`
 	WorkMode        WorkMode          `json:"work_mode"`
 	Location        *string           `json:"location"`
-	SalaryMin       *int              `json:"salary_min"`
-	SalaryMax       *int              `json:"salary_max"`
+	Salary          *int              `json:"salary"`
 	SalaryCurrency  string            `json:"salary_currency"`
 	Status          ApplicationStatus `json:"status"`
 	AppliedAt       *time.Time        `json:"applied_at"`
@@ -126,8 +125,7 @@ type Stats struct {
 	ResponseRate       float64            `json:"response_rate"`
 	OfferRate          float64            `json:"offer_rate"`
 	ActiveInterviews   int                `json:"active_interviews"`
-	AvgSalaryMin       *float64           `json:"avg_salary_min"`
-	AvgSalaryMax       *float64           `json:"avg_salary_max"`
+	AvgSalary          *float64           `json:"avg_salary"`
 	SalaryDistribution []SalaryBucket     `json:"salary_distribution"`
 	TopSources         []SourceCount      `json:"top_sources"`
 	OverTime           []TimeSeriesPoint  `json:"over_time"`

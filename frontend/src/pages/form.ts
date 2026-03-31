@@ -30,6 +30,17 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
     </div>
 
     <form id="app-form" class="space-y-5">
+      ${!isEdit ? `<div class="card relative overflow-hidden">
+        <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-accent/40"></div>
+        <div class="flex gap-2 items-end">
+          <div class="flex-1">
+            <label for="f-extract-url" class="label">${t('form.extract_url')}</label>
+            <input id="f-extract-url" class="input" type="url" placeholder="${t('form.extract_url_placeholder')}" />
+          </div>
+          <button type="button" id="extract-btn" class="btn-primary whitespace-nowrap mb-px">${icons.globe} ${t('form.extract_btn')}</button>
+        </div>
+      </div>` : ''}
+
       <div class="card space-y-4 relative overflow-hidden">
         <div class="absolute left-0 top-0 bottom-0 w-0.5 ${sectionColors.company}"></div>
         <h2 class="text-sm font-semibold text-primary/70">${t('form.company')}</h2>
@@ -103,14 +114,10 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       <div class="card space-y-4 relative overflow-hidden">
         <div class="absolute left-0 top-0 bottom-0 w-0.5 ${sectionColors.salary}"></div>
         <h2 class="text-sm font-semibold text-primary/70">${t('form.salary_status')}</h2>
-        <div class="grid grid-cols-1 xs:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 xs:grid-cols-2 gap-4">
           <div>
-            <label for="f-salary-min" class="label">${t('form.salary_min')}</label>
-            <input id="f-salary-min" name="salary_min" class="input" type="number" step="1000" value="${v('salary_min')}" />
-          </div>
-          <div>
-            <label for="f-salary-max" class="label">${t('form.salary_max')}</label>
-            <input id="f-salary-max" name="salary_max" class="input" type="number" step="1000" value="${v('salary_max')}" />
+            <label for="f-salary" class="label">${t('form.salary')}</label>
+            <input id="f-salary" name="salary" class="input" type="number" step="1000" value="${v('salary')}" />
           </div>
           <div>
             <label for="f-status" class="label">${t('form.status')}</label>
@@ -184,6 +191,68 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
 
   content.querySelector('#back-btn')?.addEventListener('click', () => window.history.back())
   content.querySelector('#cancel-btn')?.addEventListener('click', () => window.history.back())
+
+  // URL extraction
+  const extractBtn = content.querySelector('#extract-btn') as HTMLButtonElement | null
+  const extractInput = content.querySelector('#f-extract-url') as HTMLInputElement | null
+  if (extractBtn && extractInput) {
+    const setField = (id: string, value: string | undefined) => {
+      if (!value) return
+      const el = content.querySelector('#' + id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null
+      if (!el) return
+      // Only fill empty fields — don't overwrite user input
+      if (el.value && el.value !== 'CDI' && el.value !== 'Hybrid' && el.value !== 'Wishlist') return
+      if (el.tagName === 'SELECT') {
+        const option = el.querySelector(`option[value="${value}"]`) as HTMLOptionElement | null
+        if (option) el.value = value
+      } else {
+        el.value = value
+      }
+    }
+
+    extractBtn.addEventListener('click', async () => {
+      const url = extractInput.value.trim()
+      if (!url) { extractInput.focus(); return }
+
+      extractBtn.disabled = true
+      extractBtn.innerHTML = `<span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> ${t('form.extracting')}`
+
+      try {
+        const data = await api.extract(url)
+        const filled = [
+          data.company_name, data.job_title, data.location,
+          data.company_website, data.source
+        ].filter(Boolean).length
+
+        if (filled === 0) {
+          toast(t('form.extract_empty'), 'info')
+        } else {
+          setField('f-company-name', data.company_name)
+          setField('f-company-website', data.company_website)
+          setField('f-company-location', data.company_location)
+          setField('f-job-title', data.job_title)
+          setField('f-job-url', url)
+          setField('f-job-description', data.job_description)
+          setField('f-location', data.location)
+          setField('f-source', data.source)
+          if (data.contract_type) setField('f-contract-type', data.contract_type)
+          if (data.work_mode) setField('f-work-mode', data.work_mode)
+          if (data.salary) setField('f-salary', String(data.salary))
+          toast(t('form.extract_success'), 'success')
+        }
+      } catch {
+        toast(t('form.extract_error'), 'error')
+      } finally {
+        extractBtn.disabled = false
+        extractBtn.innerHTML = `${icons.globe} ${t('form.extract_btn')}`
+      }
+    })
+
+    // Allow Enter in the URL field to trigger extraction
+    extractInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); extractBtn.click() }
+    })
+  }
 
   const starPicker = content.querySelector('#star-picker')
   const ratingInput = content.querySelector('#rating-input') as HTMLInputElement | null
@@ -263,8 +332,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       contract_type: data.contract_type as Application['contract_type'],
       work_mode: data.work_mode as Application['work_mode'],
       location: data.location || undefined,
-      salary_min: data.salary_min ? Number(data.salary_min) : undefined,
-      salary_max: data.salary_max ? Number(data.salary_max) : undefined,
+      salary: data.salary ? Number(data.salary) : undefined,
       salary_currency: 'EUR',
       status: data.status as Application['status'],
       applied_at: data.applied_at ? data.applied_at + 'T00:00:00Z' : undefined,

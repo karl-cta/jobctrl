@@ -423,10 +423,10 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   if (app.contract_type) chips.appendChild(chip(t('detail.contract'), app.contract_type))
   if (app.work_mode) chips.appendChild(chip(t('detail.mode'), app.work_mode))
-  if (app.salary_min) {
+  if (app.salary) {
     chips.appendChild(chip(
       t('detail.salary'),
-      `${app.salary_min / 1000}k\u2013${(app.salary_max ?? app.salary_min) / 1000}k \u20ac`
+      `${app.salary / 1000}k \u20ac`
     ))
   }
   if (app.applied_at) {

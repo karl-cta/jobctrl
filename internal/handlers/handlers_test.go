@@ -343,7 +343,6 @@ func TestCreateApplication_ValidationErrors(t *testing.T) {
 		{"invalid status", map[string]any{"company_name": "Co", "job_title": "Dev", "contract_type": "CDI", "work_mode": "Remote", "status": "INVALID"}},
 		{"rating too low", map[string]any{"company_name": "Co", "job_title": "Dev", "contract_type": "CDI", "work_mode": "Remote", "rating": 0}},
 		{"rating too high", map[string]any{"company_name": "Co", "job_title": "Dev", "contract_type": "CDI", "work_mode": "Remote", "rating": 6}},
-		{"salary_min > salary_max", map[string]any{"company_name": "Co", "job_title": "Dev", "contract_type": "CDI", "work_mode": "Remote", "salary_min": 60000, "salary_max": 40000}},
 	}
 
 	for _, tt := range tests {
@@ -698,9 +697,9 @@ func TestStats_OfferRate(t *testing.T) {
 func TestStats_SalaryDistribution(t *testing.T) {
 	ts := newTestServer(t)
 
-	createApp(t, ts, map[string]any{"salary_min": 35000, "salary_max": 45000})
-	createApp(t, ts, map[string]any{"salary_min": 55000, "salary_max": 65000})
-	createApp(t, ts, map[string]any{"salary_min": 55000, "salary_max": 70000})
+	createApp(t, ts, map[string]any{"salary": 35000})
+	createApp(t, ts, map[string]any{"salary": 55000})
+	createApp(t, ts, map[string]any{"salary": 55000})
 
 	w := ts.do(t, "GET", "/api/stats", nil)
 	stats := decode[models.Stats](t, w)

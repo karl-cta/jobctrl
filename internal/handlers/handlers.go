@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"job-ctrl/internal/extract"
 	"job-ctrl/internal/models"
 )
 
@@ -106,9 +107,6 @@ func validateApplication(a *models.Application) error {
 	if a.Rating != nil && (*a.Rating < 1 || *a.Rating > 5) {
 		return fmt.Errorf("rating must be between 1 and 5")
 	}
-	if a.SalaryMin != nil && a.SalaryMax != nil && *a.SalaryMin > *a.SalaryMax {
-		return fmt.Errorf("salary_min cannot exceed salary_max")
-	}
 	return nil
 }
 
@@ -147,7 +145,7 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 
 	query := `SELECT a.id, a.company_name, a.company_website, a.company_industry, a.company_size,
 		a.company_location, a.job_title, a.job_url, a.job_description, a.contract_type, a.work_mode,
-		a.location, a.salary_min, a.salary_max, a.salary_currency, a.status, a.applied_at, a.source,
+		a.location, a.salary, a.salary_currency, a.status, a.applied_at, a.source,
 		a.notes, a.speech, a.rating, a.confidence, a.created_at, a.updated_at,
 		(SELECT COUNT(*) FROM interviews WHERE application_id = a.id) as interview_count,
 		(SELECT COUNT(*) FROM contacts WHERE application_id = a.id) as contact_count
@@ -167,7 +165,7 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 	allowed := map[string]bool{
 		"created_at": true, "updated_at": true, "company_name": true,
 		"job_title": true, "status": true, "applied_at": true,
-		"salary_min": true, "rating": true,
+		"salary": true, "rating": true,
 	}
 	if !allowed[sortBy] {
 		sortBy = "created_at"
@@ -216,7 +214,7 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 			&a.ID, &a.CompanyName, &a.CompanyWebsite, &a.CompanyIndustry, &a.CompanySize,
 			&a.CompanyLocation, &a.JobTitle, &a.JobURL, &a.JobDescription,
 			&a.ContractType, &a.WorkMode, &a.Location,
-			&a.SalaryMin, &a.SalaryMax, &a.SalaryCurrency, &a.Status,
+			&a.Salary, &a.SalaryCurrency, &a.Status,
 			&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating, &a.Confidence,
 			&a.CreatedAt, &a.UpdatedAt,
 			&a.InterviewCount, &a.ContactCount,
@@ -252,7 +250,7 @@ func (h *Handler) GetApplication(w http.ResponseWriter, r *http.Request) {
 	var a models.Application
 	row := h.db.QueryRowContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
 		company_size, company_location, job_title, job_url, job_description, contract_type, work_mode,
-		location, salary_min, salary_max, salary_currency, status, applied_at, source,
+		location, salary, salary_currency, status, applied_at, source,
 		notes, speech, rating, confidence, created_at, updated_at FROM applications WHERE id = ?`, id)
 	if err := scanApplication(row, &a); err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "not found")
@@ -311,11 +309,11 @@ func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 	_, err := h.db.ExecContext(r.Context(), `INSERT INTO applications
 		(id, company_name, company_website, company_industry, company_size, company_location,
 		job_title, job_url, job_description, contract_type, work_mode, location,
-		salary_min, salary_max, salary_currency, status, applied_at, source, notes, speech, rating, confidence,
-		created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		salary, salary_currency, status, applied_at, source, notes, speech, rating, confidence,
+		created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		a.ID, a.CompanyName, a.CompanyWebsite, a.CompanyIndustry, a.CompanySize, a.CompanyLocation,
 		a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.WorkMode, a.Location,
-		a.SalaryMin, a.SalaryMax, a.SalaryCurrency, a.Status, appliedAtStr, a.Source, a.Notes, a.Speech, a.Rating, a.Confidence,
+		a.Salary, a.SalaryCurrency, a.Status, appliedAtStr, a.Source, a.Notes, a.Speech, a.Rating, a.Confidence,
 		sqliteTime(a.CreatedAt), sqliteTime(a.UpdatedAt),
 	)
 	if err != nil {
@@ -366,11 +364,11 @@ func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 	_, err = h.db.ExecContext(r.Context(), `UPDATE applications SET
 		company_name=?, company_website=?, company_industry=?, company_size=?, company_location=?,
 		job_title=?, job_url=?, job_description=?, contract_type=?, work_mode=?, location=?,
-		salary_min=?, salary_max=?, salary_currency=?, status=?, applied_at=?, source=?,
+		salary=?, salary_currency=?, status=?, applied_at=?, source=?,
 		notes=?, speech=?, rating=?, confidence=?, updated_at=? WHERE id=?`,
 		a.CompanyName, a.CompanyWebsite, a.CompanyIndustry, a.CompanySize, a.CompanyLocation,
 		a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.WorkMode, a.Location,
-		a.SalaryMin, a.SalaryMax, a.SalaryCurrency, a.Status, appliedAtStr, a.Source,
+		a.Salary, a.SalaryCurrency, a.Status, appliedAtStr, a.Source,
 		a.Notes, a.Speech, a.Rating, a.Confidence, sqliteTime(a.UpdatedAt), id,
 	)
 	if err != nil {
@@ -666,23 +664,23 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications WHERE status IN ('Screening', 'Interviewing')`).Scan(&stats.ActiveInterviews)
 
-	h.db.QueryRowContext(ctx, `SELECT AVG(salary_min), AVG(salary_max) FROM applications WHERE salary_min IS NOT NULL`).Scan(&stats.AvgSalaryMin, &stats.AvgSalaryMax)
+	h.db.QueryRowContext(ctx, `SELECT AVG(salary) FROM applications WHERE salary IS NOT NULL`).Scan(&stats.AvgSalary)
 
 	salaryRows, _ := h.db.QueryContext(ctx, `SELECT
 		CASE
-			WHEN salary_min < 30000 THEN '< 30k'
-			WHEN salary_min < 40000 THEN '30-40k'
-			WHEN salary_min < 50000 THEN '40-50k'
-			WHEN salary_min < 60000 THEN '50-60k'
-			WHEN salary_min < 70000 THEN '60-70k'
-			WHEN salary_min < 80000 THEN '70-80k'
-			WHEN salary_min < 90000 THEN '80-90k'
-			WHEN salary_min < 100000 THEN '90-100k'
+			WHEN salary < 30000 THEN '< 30k'
+			WHEN salary < 40000 THEN '30-40k'
+			WHEN salary < 50000 THEN '40-50k'
+			WHEN salary < 60000 THEN '50-60k'
+			WHEN salary < 70000 THEN '60-70k'
+			WHEN salary < 80000 THEN '70-80k'
+			WHEN salary < 90000 THEN '80-90k'
+			WHEN salary < 100000 THEN '90-100k'
 			ELSE '100k+'
 		END as range_bucket,
 		COUNT(*) as c
-		FROM applications WHERE salary_min IS NOT NULL
-		GROUP BY range_bucket ORDER BY salary_min`)
+		FROM applications WHERE salary IS NOT NULL
+		GROUP BY range_bucket ORDER BY salary`)
 	if salaryRows != nil {
 		defer salaryRows.Close()
 		for salaryRows.Next() {
@@ -748,7 +746,7 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.QueryContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
 		company_size, company_location, job_title, job_url, job_description, contract_type, work_mode,
-		location, salary_min, salary_max, salary_currency, status, applied_at, source,
+		location, salary, salary_currency, status, applied_at, source,
 		notes, speech, rating, confidence, created_at, updated_at FROM applications ORDER BY created_at`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "query failed")
@@ -786,7 +784,7 @@ func scanApplication(s scanner, a *models.Application) error {
 		&a.ID, &a.CompanyName, &a.CompanyWebsite, &a.CompanyIndustry, &a.CompanySize,
 		&a.CompanyLocation, &a.JobTitle, &a.JobURL, &a.JobDescription,
 		&a.ContractType, &a.WorkMode, &a.Location,
-		&a.SalaryMin, &a.SalaryMax, &a.SalaryCurrency, &a.Status,
+		&a.Salary, &a.SalaryCurrency, &a.Status,
 		&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating, &a.Confidence,
 		&a.CreatedAt, &a.UpdatedAt,
 	)
@@ -849,6 +847,24 @@ func (h *Handler) getTimelineByApplication(r *http.Request, appID string) ([]mod
 func (h *Handler) addTimelineEvent(r *http.Request, appID, eventType, desc string) {
 	h.db.ExecContext(r.Context(), `INSERT INTO timeline_events (id, application_id, event_type, description, created_at) VALUES (?,?,?,?,?)`,
 		uuid.New().String(), appID, eventType, desc, sqliteTime(time.Now().UTC()))
+}
+
+func (h *Handler) ExtractFromURL(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" {
+		writeError(w, http.StatusBadRequest, "url is required")
+		return
+	}
+
+	result, err := extract.FromURL(body.URL)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
 }
 
 func sqliteTime(t time.Time) string {
