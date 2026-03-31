@@ -14,7 +14,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
   const v = (field: keyof Application) => esc(String(existing?.[field] ?? ''))
 
   const content = document.createElement('div')
-  content.className = 'max-w-2xl space-y-6 stagger'
+  content.className = 'max-w-4xl mx-auto space-y-6 stagger'
 
   content.innerHTML = `
     <div class="flex items-center gap-3">

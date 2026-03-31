@@ -271,7 +271,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const dateFmt = getDateLocale()
 
   const content = document.createElement('div')
-  content.className = 'space-y-10 max-w-4xl mx-auto stagger'
+  content.className = 'space-y-10 stagger'
 
   const header = document.createElement('div')
   header.className = 'space-y-5 relative z-10'

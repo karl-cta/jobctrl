@@ -52,7 +52,7 @@ export async function ListPage(): Promise<HTMLElement> {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
   const content = document.createElement('div')
-  content.className = 'space-y-6 max-w-4xl mx-auto stagger'
+  content.className = 'space-y-6 stagger'
 
   function renderTable(apps: Application[]): string {
     if (apps.length === 0) return `
