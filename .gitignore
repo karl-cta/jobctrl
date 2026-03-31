@@ -31,7 +31,7 @@ Thumbs.db
 # Logs
 *.log
 
-# Agents
+.claude/
 agents/
 CLAUDE.md
 SPEC.md
