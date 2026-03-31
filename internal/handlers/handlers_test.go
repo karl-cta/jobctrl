@@ -412,9 +412,9 @@ func TestFullCRUDLifecycle(t *testing.T) {
 	if len(full.Interviews) != 1 {
 		t.Errorf("expected 1 interview in detail, got %d", len(full.Interviews))
 	}
-	// created + status_change(Wishlist->Applied) + status_change(Applied->Interviewing)
-	if len(full.TimelineEvents) != 3 {
-		t.Errorf("expected 3 timeline events, got %d", len(full.TimelineEvents))
+	// created + interview_added + status_change(Wishlist->Applied) + status_change(Applied->Interviewing)
+	if len(full.TimelineEvents) != 4 {
+		t.Errorf("expected 4 timeline events, got %d", len(full.TimelineEvents))
 	}
 
 	// 7. Delete application cascades
@@ -818,9 +818,204 @@ func TestSortByInvalidField(t *testing.T) {
 	ts := newTestServer(t)
 	createApp(t, ts, map[string]any{"company_name": "SortCo"})
 
-	// Invalid sort field should fall back to created_at, not error
 	w := ts.do(t, "GET", "/api/applications?sort=DROP+TABLE", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with invalid sort (fallback), got %d", w.Code)
+	}
+}
+
+func TestDeleteApplication_NotFound(t *testing.T) {
+	ts := newTestServer(t)
+	w := ts.do(t, "DELETE", "/api/applications/nonexistent", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestDeleteInterview_NotFound(t *testing.T) {
+	ts := newTestServer(t)
+	w := ts.do(t, "DELETE", "/api/interviews/nonexistent", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestDeleteContact_NotFound(t *testing.T) {
+	ts := newTestServer(t)
+	w := ts.do(t, "DELETE", "/api/contacts/nonexistent", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestAutoAppliedAt(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Wishlist"})
+
+	w := ts.do(t, "PUT", "/api/applications/"+app.ID, map[string]any{
+		"company_name": "TestCo", "job_title": "Dev",
+		"contract_type": "CDI", "work_mode": "Remote", "status": "Applied",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	updated := decode[models.Application](t, w)
+	if updated.AppliedAt == nil {
+		t.Error("expected applied_at to be auto-set when status changes to Applied")
+	}
+}
+
+func TestAutoAppliedAt_NoOverwrite(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Applied", "applied_at": "2025-01-15T10:00:00Z"})
+
+	w := ts.do(t, "PUT", "/api/applications/"+app.ID, map[string]any{
+		"company_name": "TestCo", "job_title": "Dev",
+		"contract_type": "CDI", "work_mode": "Remote", "status": "Screening",
+		"applied_at": "2025-01-15T10:00:00Z",
+	})
+	updated := decode[models.Application](t, w)
+
+	w = ts.do(t, "PUT", "/api/applications/"+updated.ID, map[string]any{
+		"company_name": "TestCo", "job_title": "Dev",
+		"contract_type": "CDI", "work_mode": "Remote", "status": "Applied",
+		"applied_at": "2025-01-15T10:00:00Z",
+	})
+	final := decode[models.Application](t, w)
+	if final.AppliedAt == nil {
+		t.Fatal("expected applied_at to be preserved")
+	}
+}
+
+func TestInterviewTimelineEvents(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"company_name": "TimelineCo"})
+
+	w := ts.do(t, "POST", "/api/applications/"+app.ID+"/interviews", map[string]any{
+		"round": 1, "type": "Phone",
+	})
+	iv := decode[models.Interview](t, w)
+
+	ts.do(t, "DELETE", "/api/interviews/"+iv.ID, nil)
+
+	w = ts.do(t, "GET", "/api/applications/"+app.ID, nil)
+	got := decode[models.Application](t, w)
+
+	types := map[string]bool{}
+	for _, e := range got.TimelineEvents {
+		types[e.EventType] = true
+	}
+	if !types["interview_added"] {
+		t.Error("expected interview_added timeline event")
+	}
+	if !types["interview_deleted"] {
+		t.Error("expected interview_deleted timeline event")
+	}
+}
+
+func TestContactTimelineEvents(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"company_name": "TimelineCo"})
+
+	w := ts.do(t, "POST", "/api/applications/"+app.ID+"/contacts", map[string]any{
+		"name": "Alice",
+	})
+	c := decode[models.Contact](t, w)
+
+	ts.do(t, "DELETE", "/api/contacts/"+c.ID, nil)
+
+	w = ts.do(t, "GET", "/api/applications/"+app.ID, nil)
+	got := decode[models.Application](t, w)
+
+	types := map[string]bool{}
+	for _, e := range got.TimelineEvents {
+		types[e.EventType] = true
+	}
+	if !types["contact_added"] {
+		t.Error("expected contact_added timeline event")
+	}
+	if !types["contact_deleted"] {
+		t.Error("expected contact_deleted timeline event")
+	}
+}
+
+func TestListApplications_Counts(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"company_name": "CountCo"})
+
+	ts.do(t, "POST", "/api/applications/"+app.ID+"/interviews", map[string]any{"round": 1, "type": "Phone"})
+	ts.do(t, "POST", "/api/applications/"+app.ID+"/interviews", map[string]any{"round": 2, "type": "Technical"})
+	ts.do(t, "POST", "/api/applications/"+app.ID+"/contacts", map[string]any{"name": "Alice"})
+
+	w := ts.do(t, "GET", "/api/applications", nil)
+	var resp struct {
+		Data []struct {
+			ID             string `json:"id"`
+			InterviewCount int    `json:"interview_count"`
+			ContactCount   int    `json:"contact_count"`
+		} `json:"data"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if len(resp.Data) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(resp.Data))
+	}
+	if resp.Data[0].InterviewCount != 2 {
+		t.Errorf("expected interview_count=2, got %d", resp.Data[0].InterviewCount)
+	}
+	if resp.Data[0].ContactCount != 1 {
+		t.Errorf("expected contact_count=1, got %d", resp.Data[0].ContactCount)
+	}
+}
+
+func TestListApplications_SearchLocationSource(t *testing.T) {
+	ts := newTestServer(t)
+	createApp(t, ts, map[string]any{"company_name": "Co1", "location": "Paris"})
+	createApp(t, ts, map[string]any{"company_name": "Co2", "source": "LinkedIn"})
+	createApp(t, ts, map[string]any{"company_name": "Co3", "location": "Lyon"})
+
+	w := ts.do(t, "GET", "/api/applications?search=Paris", nil)
+	resp := decode[listResponse](t, w)
+	if resp.Total != 1 {
+		t.Errorf("search by location: expected 1, got %d", resp.Total)
+	}
+
+	w = ts.do(t, "GET", "/api/applications?search=LinkedIn", nil)
+	resp = decode[listResponse](t, w)
+	if resp.Total != 1 {
+		t.Errorf("search by source: expected 1, got %d", resp.Total)
+	}
+}
+
+func TestListApplications_SortDirection(t *testing.T) {
+	ts := newTestServer(t)
+	createApp(t, ts, map[string]any{"company_name": "Alpha"})
+	createApp(t, ts, map[string]any{"company_name": "Zulu"})
+
+	w := ts.do(t, "GET", "/api/applications?sort=company_name&dir=asc", nil)
+	resp := decode[listResponse](t, w)
+	if len(resp.Data) != 2 {
+		t.Fatalf("expected 2 apps, got %d", len(resp.Data))
+	}
+	if resp.Data[0].CompanyName != "Alpha" {
+		t.Errorf("expected Alpha first with asc sort, got %q", resp.Data[0].CompanyName)
+	}
+
+	w = ts.do(t, "GET", "/api/applications?sort=company_name&dir=desc", nil)
+	resp = decode[listResponse](t, w)
+	if resp.Data[0].CompanyName != "Zulu" {
+		t.Errorf("expected Zulu first with desc sort, got %q", resp.Data[0].CompanyName)
+	}
+}
+
+func TestListApplications_SortByRating(t *testing.T) {
+	ts := newTestServer(t)
+	createApp(t, ts, map[string]any{"company_name": "Low", "rating": 1})
+	createApp(t, ts, map[string]any{"company_name": "High", "rating": 5})
+
+	w := ts.do(t, "GET", "/api/applications?sort=rating&dir=desc", nil)
+	resp := decode[listResponse](t, w)
+	if resp.Data[0].CompanyName != "High" {
+		t.Errorf("expected High first sorted by rating desc, got %q", resp.Data[0].CompanyName)
 	}
 }

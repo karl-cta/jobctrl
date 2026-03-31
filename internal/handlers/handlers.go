@@ -143,40 +143,51 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 	if sortBy == "" {
 		sortBy = "created_at"
 	}
+	sortDir := q.Get("dir")
 
-	query := `SELECT id, company_name, company_website, company_industry, company_size,
-		company_location, job_title, job_url, job_description, contract_type, work_mode,
-		location, salary_min, salary_max, salary_currency, status, applied_at, source,
-		notes, speech, rating, created_at, updated_at
-		FROM applications WHERE 1=1`
+	query := `SELECT a.id, a.company_name, a.company_website, a.company_industry, a.company_size,
+		a.company_location, a.job_title, a.job_url, a.job_description, a.contract_type, a.work_mode,
+		a.location, a.salary_min, a.salary_max, a.salary_currency, a.status, a.applied_at, a.source,
+		a.notes, a.speech, a.rating, a.created_at, a.updated_at,
+		(SELECT COUNT(*) FROM interviews WHERE application_id = a.id) as interview_count,
+		(SELECT COUNT(*) FROM contacts WHERE application_id = a.id) as contact_count
+		FROM applications a WHERE 1=1`
 	args := []any{}
 
 	if statusFilter != "" {
-		query += " AND status = ?"
+		query += " AND a.status = ?"
 		args = append(args, statusFilter)
 	}
 	if search != "" {
-		query += " AND (company_name LIKE ? OR job_title LIKE ?)"
+		query += " AND (a.company_name LIKE ? OR a.job_title LIKE ? OR a.location LIKE ? OR a.source LIKE ?)"
 		like := "%" + search + "%"
-		args = append(args, like, like)
+		args = append(args, like, like, like, like)
 	}
 
-	allowed := map[string]bool{"created_at": true, "company_name": true, "job_title": true, "status": true, "applied_at": true}
+	allowed := map[string]bool{
+		"created_at": true, "updated_at": true, "company_name": true,
+		"job_title": true, "status": true, "applied_at": true,
+		"salary_min": true, "rating": true,
+	}
 	if !allowed[sortBy] {
 		sortBy = "created_at"
 	}
-	query += " ORDER BY " + sortBy + " DESC"
+	dir := "DESC"
+	if sortDir == "asc" {
+		dir = "ASC"
+	}
+	query += " ORDER BY a." + sortBy + " " + dir
 
-	countQuery := "SELECT COUNT(*) FROM applications WHERE 1=1"
+	countQuery := "SELECT COUNT(*) FROM applications a WHERE 1=1"
 	countArgs := []any{}
 	if statusFilter != "" {
-		countQuery += " AND status = ?"
+		countQuery += " AND a.status = ?"
 		countArgs = append(countArgs, statusFilter)
 	}
 	if search != "" {
-		countQuery += " AND (company_name LIKE ? OR job_title LIKE ?)"
+		countQuery += " AND (a.company_name LIKE ? OR a.job_title LIKE ? OR a.location LIKE ? OR a.source LIKE ?)"
 		like := "%" + search + "%"
-		countArgs = append(countArgs, like, like)
+		countArgs = append(countArgs, like, like, like, like)
 	}
 	var total int
 	h.db.QueryRowContext(r.Context(), countQuery, countArgs...).Scan(&total)
@@ -192,10 +203,24 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	apps := []models.Application{}
+	type appWithCounts struct {
+		models.Application
+		InterviewCount int `json:"interview_count"`
+		ContactCount   int `json:"contact_count"`
+	}
+
+	apps := []appWithCounts{}
 	for rows.Next() {
-		var a models.Application
-		if err := scanApplication(rows, &a); err != nil {
+		var a appWithCounts
+		if err := rows.Scan(
+			&a.ID, &a.CompanyName, &a.CompanyWebsite, &a.CompanyIndustry, &a.CompanySize,
+			&a.CompanyLocation, &a.JobTitle, &a.JobURL, &a.JobDescription,
+			&a.ContractType, &a.WorkMode, &a.Location,
+			&a.SalaryMin, &a.SalaryMax, &a.SalaryCurrency, &a.Status,
+			&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating,
+			&a.CreatedAt, &a.UpdatedAt,
+			&a.InterviewCount, &a.ContactCount,
+		); err != nil {
 			writeError(w, http.StatusInternalServerError, "scan failed")
 			return
 		}
@@ -325,7 +350,12 @@ func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.UpdatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	a.UpdatedAt = now
+
+	if a.Status == models.StatusApplied && oldStatus != models.StatusApplied && a.AppliedAt == nil {
+		a.AppliedAt = &now
+	}
 
 	var appliedAtStr *string
 	if a.AppliedAt != nil {
@@ -358,9 +388,14 @@ func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteApplication(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	_, err := h.db.ExecContext(r.Context(), `DELETE FROM applications WHERE id=?`, id)
+	result, err := h.db.ExecContext(r.Context(), `DELETE FROM applications WHERE id=?`, id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -428,6 +463,7 @@ func (h *Handler) CreateInterview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "insert failed")
 		return
 	}
+	h.addTimelineEvent(r, appID, "interview_added", fmt.Sprintf("Interview round %d (%s) added", iv.Round, iv.Type))
 	writeJSON(w, http.StatusCreated, iv)
 }
 
@@ -470,7 +506,21 @@ func (h *Handler) UpdateInterview(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteInterview(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	h.db.ExecContext(r.Context(), `DELETE FROM interviews WHERE id=?`, id)
+	var appID string
+	h.db.QueryRowContext(r.Context(), `SELECT application_id FROM interviews WHERE id=?`, id).Scan(&appID)
+	result, err := h.db.ExecContext(r.Context(), `DELETE FROM interviews WHERE id=?`, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if appID != "" {
+		h.addTimelineEvent(r, appID, "interview_deleted", "Interview removed")
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -526,6 +576,7 @@ func (h *Handler) CreateContact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "insert failed")
 		return
 	}
+	h.addTimelineEvent(r, appID, "contact_added", fmt.Sprintf("Contact %s added", c.Name))
 	writeJSON(w, http.StatusCreated, c)
 }
 
@@ -557,7 +608,21 @@ func (h *Handler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	h.db.ExecContext(r.Context(), `DELETE FROM contacts WHERE id=?`, id)
+	var appID string
+	h.db.QueryRowContext(r.Context(), `SELECT application_id FROM contacts WHERE id=?`, id).Scan(&appID)
+	result, err := h.db.ExecContext(r.Context(), `DELETE FROM contacts WHERE id=?`, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if appID != "" {
+		h.addTimelineEvent(r, appID, "contact_deleted", "Contact removed")
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
