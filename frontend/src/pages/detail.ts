@@ -568,7 +568,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const prepPanel = document.createElement('div')
   prepPanel.className = 'p-6 space-y-4'
   const prepTA = document.createElement('textarea')
-  prepTA.className = 'input min-h-[150px] w-full font-mono text-sm'
+  prepTA.className = 'input min-h-[150px] w-full'
   prepTA.value = app.speech ?? ''
   prepTA.placeholder = t('detail.no_prep')
   prepTA.setAttribute('aria-label', t('detail.tab_prep'))

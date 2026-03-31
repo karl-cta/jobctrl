@@ -26,7 +26,7 @@ function barChart(data: Array<{ period: string; count: number }>): string {
   const gridLines = gridVals.map(v => {
     const y = padT + chartH - (v / maxCount) * chartH
     return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="currentColor" stroke-opacity="0.06" stroke-width="1" stroke-dasharray="4 4"/>`
-      + `<text x="${padL - 6}" y="${y + 3}" text-anchor="end" font-size="10" fill="currentColor" opacity="0.35" font-family="Inter, system-ui">${v}</text>`
+      + `<text x="${padL - 6}" y="${y + 3}" text-anchor="end" font-size="10" fill="currentColor" opacity="0.35" font-family="Outfit, system-ui, sans-serif">${v}</text>`
   }).join('')
 
   // Bars with rounded tops and gradient
@@ -39,10 +39,10 @@ function barChart(data: Array<{ period: string; count: number }>): string {
     return [
       `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="1" fill="url(#barGrad)" opacity="0.9"/>`,
       d.count > 0
-        ? `<text x="${(x + barW / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.6" font-family="Inter, system-ui" font-weight="500">${d.count}</text>`
+        ? `<text x="${(x + barW / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.6" font-family="Outfit, system-ui, sans-serif" font-weight="500">${d.count}</text>`
         : '',
       showLabel
-        ? `<text x="${(x + barW / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.4" font-family="Inter, system-ui">${label}</text>`
+        ? `<text x="${(x + barW / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.4" font-family="Outfit, system-ui, sans-serif">${label}</text>`
         : '',
     ].join('')
   }).join('')

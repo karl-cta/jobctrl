@@ -166,7 +166,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         </div>
         <div>
           <label for="f-speech" class="label">${t('form.speech')}</label>
-          <textarea id="f-speech" name="speech" class="input min-h-[80px] font-mono text-sm" placeholder="${t('form.speech_placeholder')}">${v('speech')}</textarea>
+          <textarea id="f-speech" name="speech" class="input min-h-[80px]" placeholder="${t('form.speech_placeholder')}">${v('speech')}</textarea>
         </div>
       </div>
 
