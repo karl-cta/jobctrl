@@ -1,13 +1,23 @@
-# Job-Ctrl
+<p align="center">
+  <img src="frontend/public/favicon.svg" width="64" height="64" alt="Job-Ctrl" />
+</p>
 
-Self-hosted job application tracker. Single Go binary, SQLite database, zero cloud dependencies.
+<h1 align="center">Job-Ctrl</h1>
 
-![Job-Ctrl Dashboard](.github/jobctrl-dashboard.png)
+<p align="center">
+  Self-hosted job application tracker. Single Go binary, SQLite database, zero cloud dependencies.
+</p>
 
-![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
-![Docker](https://img.shields.io/github/actions/workflow/status/karl-cta/jobctrl/docker.yml?label=Docker&logo=docker&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white" alt="Go" />
+  <img src="https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white" alt="SQLite" />
+  <img src="https://img.shields.io/github/actions/workflow/status/karl-cta/jobctrl/docker.yml?label=Docker&logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
+</p>
+
+<p align="center">
+  <img src=".github/jobctrl-dashboard.png" alt="Job-Ctrl Dashboard" />
+</p>
 
 ## Features
 
