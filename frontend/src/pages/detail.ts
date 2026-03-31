@@ -45,8 +45,8 @@ function buildInterviewForm(iv?: Partial<Interview>): {
     </div>
     <div>
       <label class="label">${t('detail.interview_scheduled')}</label>
-      <input name="scheduled_at" class="input" type="date"
-        value="${iv?.scheduled_at ? new Date(iv.scheduled_at).toISOString().slice(0, 10) : ''}" />
+      <input name="scheduled_at" class="input" type="datetime-local"
+        value="${iv?.scheduled_at ? new Date(iv.scheduled_at).toISOString().slice(0, 16) : ''}" />
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div>
@@ -85,7 +85,7 @@ function buildInterviewForm(iv?: Partial<Interview>): {
   const getData = (): Partial<Interview> => ({
     round: Number((el.querySelector<HTMLInputElement>('[name="round"]'))?.value) || 1,
     type: (el.querySelector<HTMLSelectElement>('[name="type"]'))?.value as Interview['type'],
-    scheduled_at: (el.querySelector<HTMLInputElement>('[name="scheduled_at"]'))?.value ? (el.querySelector<HTMLInputElement>('[name="scheduled_at"]'))!.value + 'T00:00:00Z' : undefined,
+    scheduled_at: (el.querySelector<HTMLInputElement>('[name="scheduled_at"]'))?.value || undefined,
     duration_minutes: (el.querySelector<HTMLInputElement>('[name="duration_minutes"]'))?.value
       ? Number((el.querySelector<HTMLInputElement>('[name="duration_minutes"]'))!.value)
       : undefined,
