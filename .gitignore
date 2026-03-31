@@ -1,0 +1,37 @@
+# Build artifacts
+job-ctrl
+frontend/node_modules
+# Keep placeholder index.html for Go embed, ignore generated assets
+frontend/dist/assets/
+frontend/dist/*.js
+frontend/dist/*.css
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Environment
+.env
+.env.local
+
+# Go
+vendor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Agents
+agents/
+CLAUDE.md
+SPEC.md

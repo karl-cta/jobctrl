@@ -1,0 +1,13 @@
+services:
+  job-ctrl:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - job-ctrl-data:/data
+    environment:
+      - JOB_CTRL_DB_PATH=/data/job-ctrl.db
+    restart: unless-stopped
+
+volumes:
+  job-ctrl-data:

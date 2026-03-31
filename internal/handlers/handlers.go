@@ -1,0 +1,792 @@
+package handlers
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
+	"job-ctrl/internal/models"
+)
+
+const defaultPageSize = 20
+const maxPageSize = 100
+
+type Handler struct {
+	db *sql.DB
+}
+
+func New(db *sql.DB) *Handler {
+	return &Handler{db: db}
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+var validContractTypes = map[models.ContractType]bool{
+	models.ContractCDI: true, models.ContractCDD: true,
+	models.ContractFreelance: true, models.ContractInternship: true, models.ContractOther: true,
+}
+
+var validWorkModes = map[models.WorkMode]bool{
+	models.WorkModeOnsite: true, models.WorkModeHybrid: true, models.WorkModeRemote: true,
+}
+
+var validStatuses = map[models.ApplicationStatus]bool{
+	models.StatusWishlist: true, models.StatusApplied: true,
+	models.StatusScreening: true, models.StatusInterviewing: true,
+	models.StatusOffer: true, models.StatusAccepted: true,
+	models.StatusRejected: true, models.StatusWithdrawn: true,
+}
+
+var validInterviewTypes = map[models.InterviewType]bool{
+	models.InterviewPhone: true, models.InterviewVideo: true,
+	models.InterviewOnsite: true, models.InterviewTechnical: true,
+	models.InterviewHR: true, models.InterviewCulture: true,
+	models.InterviewFinal: true,
+}
+
+var validInterviewOutcomes = map[models.InterviewOutcome]bool{
+	models.OutcomePassed: true, models.OutcomeFailed: true,
+	models.OutcomePending: true, models.OutcomeCancelled: true,
+}
+
+func validateInterview(iv *models.Interview) error {
+	if iv.Type != "" && !validInterviewTypes[iv.Type] {
+		return fmt.Errorf("invalid type: %s", iv.Type)
+	}
+	if iv.Outcome != nil && !validInterviewOutcomes[*iv.Outcome] {
+		return fmt.Errorf("invalid outcome: %s", *iv.Outcome)
+	}
+	if iv.Round < 0 {
+		return fmt.Errorf("round must be non-negative")
+	}
+	if iv.DurationMinutes != nil && *iv.DurationMinutes < 0 {
+		return fmt.Errorf("duration_minutes must be non-negative")
+	}
+	return nil
+}
+
+func validateContact(c *models.Contact) error {
+	if strings.TrimSpace(c.Name) == "" {
+		return fmt.Errorf("name is required")
+	}
+	return nil
+}
+
+func validateApplication(a *models.Application) error {
+	if strings.TrimSpace(a.CompanyName) == "" {
+		return fmt.Errorf("company_name is required")
+	}
+	if strings.TrimSpace(a.JobTitle) == "" {
+		return fmt.Errorf("job_title is required")
+	}
+	if a.ContractType != "" && !validContractTypes[a.ContractType] {
+		return fmt.Errorf("invalid contract_type: %s", a.ContractType)
+	}
+	if a.WorkMode != "" && !validWorkModes[a.WorkMode] {
+		return fmt.Errorf("invalid work_mode: %s", a.WorkMode)
+	}
+	if a.Status != "" && !validStatuses[a.Status] {
+		return fmt.Errorf("invalid status: %s", a.Status)
+	}
+	if a.Rating != nil && (*a.Rating < 1 || *a.Rating > 5) {
+		return fmt.Errorf("rating must be between 1 and 5")
+	}
+	if a.SalaryMin != nil && a.SalaryMax != nil && *a.SalaryMin > *a.SalaryMax {
+		return fmt.Errorf("salary_min cannot exceed salary_max")
+	}
+	return nil
+}
+
+func paginationParams(r *http.Request) (limit, offset int) {
+	limit = defaultPageSize
+	if v := r.URL.Query().Get("per_page"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if limit > maxPageSize {
+		limit = maxPageSize
+	}
+
+	page := 1
+	if v := r.URL.Query().Get("page"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			page = n
+		}
+	}
+	offset = (page - 1) * limit
+	return limit, offset
+}
+
+// Applications
+
+func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	statusFilter := q.Get("status")
+	search := q.Get("search")
+	sortBy := q.Get("sort")
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+
+	query := `SELECT id, company_name, company_website, company_industry, company_size,
+		company_location, job_title, job_url, job_description, contract_type, work_mode,
+		location, salary_min, salary_max, salary_currency, status, applied_at, source,
+		notes, speech, rating, created_at, updated_at
+		FROM applications WHERE 1=1`
+	args := []any{}
+
+	if statusFilter != "" {
+		query += " AND status = ?"
+		args = append(args, statusFilter)
+	}
+	if search != "" {
+		query += " AND (company_name LIKE ? OR job_title LIKE ?)"
+		like := "%" + search + "%"
+		args = append(args, like, like)
+	}
+
+	allowed := map[string]bool{"created_at": true, "company_name": true, "job_title": true, "status": true, "applied_at": true}
+	if !allowed[sortBy] {
+		sortBy = "created_at"
+	}
+	query += " ORDER BY " + sortBy + " DESC"
+
+	countQuery := "SELECT COUNT(*) FROM applications WHERE 1=1"
+	countArgs := []any{}
+	if statusFilter != "" {
+		countQuery += " AND status = ?"
+		countArgs = append(countArgs, statusFilter)
+	}
+	if search != "" {
+		countQuery += " AND (company_name LIKE ? OR job_title LIKE ?)"
+		like := "%" + search + "%"
+		countArgs = append(countArgs, like, like)
+	}
+	var total int
+	h.db.QueryRowContext(r.Context(), countQuery, countArgs...).Scan(&total)
+
+	limit, offset := paginationParams(r)
+	query += " LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	rows, err := h.db.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	defer rows.Close()
+
+	apps := []models.Application{}
+	for rows.Next() {
+		var a models.Application
+		if err := scanApplication(rows, &a); err != nil {
+			writeError(w, http.StatusInternalServerError, "scan failed")
+			return
+		}
+		apps = append(apps, a)
+	}
+
+	page := 1
+	if v := r.URL.Query().Get("page"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			page = n
+		}
+	}
+	totalPages := (total + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data":        apps,
+		"total":       total,
+		"page":        page,
+		"per_page":    limit,
+		"total_pages": totalPages,
+	})
+}
+
+func (h *Handler) GetApplication(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var a models.Application
+	row := h.db.QueryRowContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
+		company_size, company_location, job_title, job_url, job_description, contract_type, work_mode,
+		location, salary_min, salary_max, salary_currency, status, applied_at, source,
+		notes, speech, rating, created_at, updated_at FROM applications WHERE id = ?`, id)
+	if err := scanApplication(row, &a); err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+
+	interviews, _ := h.getInterviewsByApplication(r, id)
+	a.Interviews = interviews
+
+	contacts, _ := h.getContactsByApplication(r, id)
+	a.Contacts = contacts
+
+	events, _ := h.getTimelineByApplication(r, id)
+	a.TimelineEvents = events
+
+	writeJSON(w, http.StatusOK, a)
+}
+
+func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
+	var a models.Application
+	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if a.SalaryCurrency == "" {
+		a.SalaryCurrency = "EUR"
+	}
+	if a.Status == "" {
+		a.Status = models.StatusWishlist
+	}
+	if a.ContractType == "" {
+		a.ContractType = models.ContractCDI
+	}
+	if a.WorkMode == "" {
+		a.WorkMode = models.WorkModeHybrid
+	}
+	if err := validateApplication(&a); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	a.ID = uuid.New().String()
+	now := time.Now().UTC()
+	a.CreatedAt = now
+	a.UpdatedAt = now
+
+	var appliedAtStr *string
+	if a.AppliedAt != nil {
+		s := sqliteTime(*a.AppliedAt)
+		appliedAtStr = &s
+	}
+
+	_, err := h.db.ExecContext(r.Context(), `INSERT INTO applications
+		(id, company_name, company_website, company_industry, company_size, company_location,
+		job_title, job_url, job_description, contract_type, work_mode, location,
+		salary_min, salary_max, salary_currency, status, applied_at, source, notes, speech, rating,
+		created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		a.ID, a.CompanyName, a.CompanyWebsite, a.CompanyIndustry, a.CompanySize, a.CompanyLocation,
+		a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.WorkMode, a.Location,
+		a.SalaryMin, a.SalaryMax, a.SalaryCurrency, a.Status, appliedAtStr, a.Source, a.Notes, a.Speech, a.Rating,
+		sqliteTime(a.CreatedAt), sqliteTime(a.UpdatedAt),
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "insert failed")
+		return
+	}
+
+	h.addTimelineEvent(r, a.ID, "created", "Application created")
+	writeJSON(w, http.StatusCreated, a)
+}
+
+func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var oldStatus models.ApplicationStatus
+	err := h.db.QueryRowContext(r.Context(), `SELECT status FROM applications WHERE id = ?`, id).Scan(&oldStatus)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "application not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+
+	var a models.Application
+	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := validateApplication(&a); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	a.UpdatedAt = time.Now().UTC()
+
+	var appliedAtStr *string
+	if a.AppliedAt != nil {
+		s := sqliteTime(*a.AppliedAt)
+		appliedAtStr = &s
+	}
+
+	_, err = h.db.ExecContext(r.Context(), `UPDATE applications SET
+		company_name=?, company_website=?, company_industry=?, company_size=?, company_location=?,
+		job_title=?, job_url=?, job_description=?, contract_type=?, work_mode=?, location=?,
+		salary_min=?, salary_max=?, salary_currency=?, status=?, applied_at=?, source=?,
+		notes=?, speech=?, rating=?, updated_at=? WHERE id=?`,
+		a.CompanyName, a.CompanyWebsite, a.CompanyIndustry, a.CompanySize, a.CompanyLocation,
+		a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.WorkMode, a.Location,
+		a.SalaryMin, a.SalaryMax, a.SalaryCurrency, a.Status, appliedAtStr, a.Source,
+		a.Notes, a.Speech, a.Rating, sqliteTime(a.UpdatedAt), id,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+
+	if a.Status != oldStatus {
+		h.addTimelineEvent(r, id, "status_change", fmt.Sprintf("Status changed from %s to %s", oldStatus, a.Status))
+	}
+
+	a.ID = id
+	writeJSON(w, http.StatusOK, a)
+}
+
+func (h *Handler) DeleteApplication(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	_, err := h.db.ExecContext(r.Context(), `DELETE FROM applications WHERE id=?`, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Interviews
+
+func (h *Handler) ListInterviews(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	interviews, err := h.getInterviewsByApplication(r, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, interviews)
+}
+
+func (h *Handler) GetInterview(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var iv models.Interview
+	row := h.db.QueryRowContext(r.Context(), `SELECT id, application_id, round, type, scheduled_at,
+		duration_minutes, interviewer_name, interviewer_role, notes, prep_notes, outcome, created_at
+		FROM interviews WHERE id = ?`, id)
+	err := row.Scan(&iv.ID, &iv.ApplicationID, &iv.Round, &iv.Type, &iv.ScheduledAt,
+		&iv.DurationMinutes, &iv.InterviewerName, &iv.InterviewerRole, &iv.Notes,
+		&iv.PrepNotes, &iv.Outcome, &iv.CreatedAt)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, iv)
+}
+
+func (h *Handler) CreateInterview(w http.ResponseWriter, r *http.Request) {
+	appID := chi.URLParam(r, "id")
+	var iv models.Interview
+	if err := json.NewDecoder(r.Body).Decode(&iv); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := validateInterview(&iv); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	iv.ID = uuid.New().String()
+	iv.ApplicationID = appID
+	iv.CreatedAt = time.Now().UTC()
+
+	var scheduledStr *string
+	if iv.ScheduledAt != nil {
+		s := sqliteTime(*iv.ScheduledAt)
+		scheduledStr = &s
+	}
+
+	_, err := h.db.ExecContext(r.Context(), `INSERT INTO interviews
+		(id, application_id, round, type, scheduled_at, duration_minutes, interviewer_name,
+		interviewer_role, notes, prep_notes, outcome, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		iv.ID, iv.ApplicationID, iv.Round, iv.Type, scheduledStr, iv.DurationMinutes,
+		iv.InterviewerName, iv.InterviewerRole, iv.Notes, iv.PrepNotes, iv.Outcome, sqliteTime(iv.CreatedAt),
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "insert failed")
+		return
+	}
+	writeJSON(w, http.StatusCreated, iv)
+}
+
+func (h *Handler) UpdateInterview(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var iv models.Interview
+	if err := json.NewDecoder(r.Body).Decode(&iv); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := validateInterview(&iv); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	var scheduledStr *string
+	if iv.ScheduledAt != nil {
+		s := sqliteTime(*iv.ScheduledAt)
+		scheduledStr = &s
+	}
+
+	result, err := h.db.ExecContext(r.Context(), `UPDATE interviews SET
+		round=?, type=?, scheduled_at=?, duration_minutes=?, interviewer_name=?,
+		interviewer_role=?, notes=?, prep_notes=?, outcome=? WHERE id=?`,
+		iv.Round, iv.Type, scheduledStr, iv.DurationMinutes, iv.InterviewerName,
+		iv.InterviewerRole, iv.Notes, iv.PrepNotes, iv.Outcome, id,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	iv.ID = id
+	writeJSON(w, http.StatusOK, iv)
+}
+
+func (h *Handler) DeleteInterview(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	h.db.ExecContext(r.Context(), `DELETE FROM interviews WHERE id=?`, id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Contacts
+
+func (h *Handler) ListContacts(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	contacts, err := h.getContactsByApplication(r, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, contacts)
+}
+
+func (h *Handler) GetContact(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var c models.Contact
+	row := h.db.QueryRowContext(r.Context(), `SELECT id, application_id, name, role, email, phone, linkedin, notes, created_at
+		FROM contacts WHERE id = ?`, id)
+	err := row.Scan(&c.ID, &c.ApplicationID, &c.Name, &c.Role, &c.Email, &c.Phone, &c.LinkedIn, &c.Notes, &c.CreatedAt)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, c)
+}
+
+func (h *Handler) CreateContact(w http.ResponseWriter, r *http.Request) {
+	appID := chi.URLParam(r, "id")
+	var c models.Contact
+	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := validateContact(&c); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	c.ID = uuid.New().String()
+	c.ApplicationID = appID
+	c.CreatedAt = time.Now().UTC()
+
+	_, err := h.db.ExecContext(r.Context(), `INSERT INTO contacts
+		(id, application_id, name, role, email, phone, linkedin, notes, created_at)
+		VALUES (?,?,?,?,?,?,?,?,?)`,
+		c.ID, c.ApplicationID, c.Name, c.Role, c.Email, c.Phone, c.LinkedIn, c.Notes, sqliteTime(c.CreatedAt),
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "insert failed")
+		return
+	}
+	writeJSON(w, http.StatusCreated, c)
+}
+
+func (h *Handler) UpdateContact(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var c models.Contact
+	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := validateContact(&c); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, err := h.db.ExecContext(r.Context(), `UPDATE contacts SET name=?, role=?, email=?, phone=?, linkedin=?, notes=? WHERE id=?`,
+		c.Name, c.Role, c.Email, c.Phone, c.LinkedIn, c.Notes, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	c.ID = id
+	writeJSON(w, http.StatusOK, c)
+}
+
+func (h *Handler) DeleteContact(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	h.db.ExecContext(r.Context(), `DELETE FROM contacts WHERE id=?`, id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Stats & Export
+
+func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	stats := models.Stats{
+		ByStatus:        map[string]int{},
+		AvgDaysInStatus: map[string]float64{},
+	}
+
+	h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications`).Scan(&stats.Total)
+
+	// Count by status
+	rows, _ := h.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM applications GROUP BY status`)
+	if rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var status string
+			var count int
+			rows.Scan(&status, &count)
+			stats.ByStatus[status] = count
+		}
+	}
+
+	responded := stats.ByStatus[string(models.StatusScreening)] +
+		stats.ByStatus[string(models.StatusInterviewing)] +
+		stats.ByStatus[string(models.StatusOffer)] +
+		stats.ByStatus[string(models.StatusAccepted)] +
+		stats.ByStatus[string(models.StatusRejected)]
+	applied := stats.ByStatus[string(models.StatusApplied)] + responded
+	if applied > 0 {
+		stats.ResponseRate = float64(responded) / float64(applied) * 100
+	}
+
+	offers := stats.ByStatus[string(models.StatusOffer)] + stats.ByStatus[string(models.StatusAccepted)]
+	if applied > 0 {
+		stats.OfferRate = float64(offers) / float64(applied) * 100
+	}
+
+	h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM interviews WHERE outcome IS NULL OR outcome = 'Pending'`).Scan(&stats.ActiveInterviews)
+
+	h.db.QueryRowContext(ctx, `SELECT AVG(salary_min), AVG(salary_max) FROM applications WHERE salary_min IS NOT NULL`).Scan(&stats.AvgSalaryMin, &stats.AvgSalaryMax)
+
+	salaryRows, _ := h.db.QueryContext(ctx, `SELECT
+		CASE
+			WHEN salary_min < 30000 THEN '< 30k'
+			WHEN salary_min < 40000 THEN '30-40k'
+			WHEN salary_min < 50000 THEN '40-50k'
+			WHEN salary_min < 60000 THEN '50-60k'
+			WHEN salary_min < 70000 THEN '60-70k'
+			WHEN salary_min < 80000 THEN '70-80k'
+			WHEN salary_min < 90000 THEN '80-90k'
+			WHEN salary_min < 100000 THEN '90-100k'
+			ELSE '100k+'
+		END as range_bucket,
+		COUNT(*) as c
+		FROM applications WHERE salary_min IS NOT NULL
+		GROUP BY range_bucket ORDER BY salary_min`)
+	if salaryRows != nil {
+		defer salaryRows.Close()
+		for salaryRows.Next() {
+			var b models.SalaryBucket
+			salaryRows.Scan(&b.Range, &b.Count)
+			stats.SalaryDistribution = append(stats.SalaryDistribution, b)
+		}
+	}
+
+	sourceRows, _ := h.db.QueryContext(ctx, `SELECT source, COUNT(*) as c FROM applications WHERE source IS NOT NULL AND source != '' GROUP BY source ORDER BY c DESC LIMIT 5`)
+	if sourceRows != nil {
+		defer sourceRows.Close()
+		for sourceRows.Next() {
+			var sc models.SourceCount
+			sourceRows.Scan(&sc.Source, &sc.Count)
+			stats.TopSources = append(stats.TopSources, sc)
+		}
+	}
+
+	// strftime needs plain datetime; strip RFC3339 T and Z from stored values.
+	timeRows, _ := h.db.QueryContext(ctx, `SELECT
+		strftime('%Y-W%W', replace(replace(created_at, 'T', ' '), 'Z', '')) as period,
+		COUNT(*) as c
+		FROM applications
+		WHERE created_at >= datetime('now', '-84 days')
+		GROUP BY period ORDER BY period`)
+	if timeRows != nil {
+		defer timeRows.Close()
+		for timeRows.Next() {
+			var p models.TimeSeriesPoint
+			timeRows.Scan(&p.Period, &p.Count)
+			stats.OverTime = append(stats.OverTime, p)
+		}
+	}
+
+	daysRows, _ := h.db.QueryContext(ctx, `SELECT
+		te1.description,
+		AVG(julianday(replace(replace(te2.created_at, 'T', ' '), 'Z', ''))
+		  - julianday(replace(replace(te1.created_at, 'T', ' '), 'Z', '')))
+		FROM timeline_events te1
+		INNER JOIN timeline_events te2 ON te1.application_id = te2.application_id
+			AND te2.event_type = 'status_change'
+			AND te2.created_at > te1.created_at
+		WHERE te1.event_type = 'status_change'
+		GROUP BY te1.description`)
+	if daysRows != nil {
+		defer daysRows.Close()
+		for daysRows.Next() {
+			var desc string
+			var avgDays float64
+			daysRows.Scan(&desc, &avgDays)
+			// Extract the target status from "Status changed from X to Y"
+			if idx := strings.LastIndex(desc, " to "); idx >= 0 {
+				status := desc[idx+4:]
+				stats.AvgDaysInStatus[status] = avgDays
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, stats)
+}
+
+func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.db.QueryContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
+		company_size, company_location, job_title, job_url, job_description, contract_type, work_mode,
+		location, salary_min, salary_max, salary_currency, status, applied_at, source,
+		notes, speech, rating, created_at, updated_at FROM applications ORDER BY created_at`)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	var apps []models.Application
+	for rows.Next() {
+		var a models.Application
+		if err := scanApplication(rows, &a); err != nil {
+			rows.Close()
+			writeError(w, http.StatusInternalServerError, "scan failed")
+			return
+		}
+		apps = append(apps, a)
+	}
+	rows.Close()
+
+	for i := range apps {
+		apps[i].Interviews, _ = h.getInterviewsByApplication(r, apps[i].ID)
+		apps[i].Contacts, _ = h.getContactsByApplication(r, apps[i].ID)
+		apps[i].TimelineEvents, _ = h.getTimelineByApplication(r, apps[i].ID)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"applications": apps, "exported_at": time.Now().UTC()})
+}
+
+// Helpers
+
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+func scanApplication(s scanner, a *models.Application) error {
+	return s.Scan(
+		&a.ID, &a.CompanyName, &a.CompanyWebsite, &a.CompanyIndustry, &a.CompanySize,
+		&a.CompanyLocation, &a.JobTitle, &a.JobURL, &a.JobDescription,
+		&a.ContractType, &a.WorkMode, &a.Location,
+		&a.SalaryMin, &a.SalaryMax, &a.SalaryCurrency, &a.Status,
+		&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating,
+		&a.CreatedAt, &a.UpdatedAt,
+	)
+}
+
+func (h *Handler) getInterviewsByApplication(r *http.Request, appID string) ([]models.Interview, error) {
+	rows, err := h.db.QueryContext(r.Context(), `SELECT id, application_id, round, type, scheduled_at,
+		duration_minutes, interviewer_name, interviewer_role, notes, prep_notes, outcome, created_at
+		FROM interviews WHERE application_id=? ORDER BY round, created_at`, appID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []models.Interview
+	for rows.Next() {
+		var iv models.Interview
+		rows.Scan(&iv.ID, &iv.ApplicationID, &iv.Round, &iv.Type, &iv.ScheduledAt,
+			&iv.DurationMinutes, &iv.InterviewerName, &iv.InterviewerRole, &iv.Notes,
+			&iv.PrepNotes, &iv.Outcome, &iv.CreatedAt)
+		list = append(list, iv)
+	}
+	return list, nil
+}
+
+func (h *Handler) getContactsByApplication(r *http.Request, appID string) ([]models.Contact, error) {
+	rows, err := h.db.QueryContext(r.Context(), `SELECT id, application_id, name, role, email, phone, linkedin, notes, created_at
+		FROM contacts WHERE application_id=? ORDER BY created_at`, appID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []models.Contact
+	for rows.Next() {
+		var c models.Contact
+		rows.Scan(&c.ID, &c.ApplicationID, &c.Name, &c.Role, &c.Email, &c.Phone, &c.LinkedIn, &c.Notes, &c.CreatedAt)
+		list = append(list, c)
+	}
+	return list, nil
+}
+
+func (h *Handler) getTimelineByApplication(r *http.Request, appID string) ([]models.TimelineEvent, error) {
+	rows, err := h.db.QueryContext(r.Context(), `SELECT id, application_id, event_type, description, created_at
+		FROM timeline_events WHERE application_id=? ORDER BY created_at`, appID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []models.TimelineEvent
+	for rows.Next() {
+		var e models.TimelineEvent
+		rows.Scan(&e.ID, &e.ApplicationID, &e.EventType, &e.Description, &e.CreatedAt)
+		list = append(list, e)
+	}
+	return list, nil
+}
+
+func (h *Handler) addTimelineEvent(r *http.Request, appID, eventType, desc string) {
+	h.db.ExecContext(r.Context(), `INSERT INTO timeline_events (id, application_id, event_type, description, created_at) VALUES (?,?,?,?,?)`,
+		uuid.New().String(), appID, eventType, desc, sqliteTime(time.Now().UTC()))
+}
+
+func sqliteTime(t time.Time) string {
+	return t.Format("2006-01-02 15:04:05")
+}
+
