@@ -137,6 +137,26 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
           <input type="hidden" name="rating" id="rating-input" value="${v('rating')}" />
         </div>
         <div>
+          <label class="label">${t('form.confidence')}</label>
+          <div class="flex gap-1.5" id="confidence-picker" role="radiogroup" aria-label="${t('form.confidence')}">
+            ${[1,2,3,4].map(n => {
+              const active = Number(v('confidence')) === n
+              const colors: Record<number, { active: string; idle: string }> = {
+                1: { active: 'bg-stone-500 text-white dark:bg-stone-400 dark:text-stone-950', idle: 'text-stone-500 border-stone-300 dark:border-stone-600' },
+                2: { active: 'bg-amber-500 text-white dark:bg-amber-400 dark:text-amber-950', idle: 'text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700' },
+                3: { active: 'bg-emerald-500 text-white dark:bg-emerald-400 dark:text-emerald-950', idle: 'text-emerald-600 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700' },
+                4: { active: 'bg-teal-500 text-white dark:bg-teal-400 dark:text-teal-950', idle: 'text-teal-600 border-teal-300 dark:text-teal-400 dark:border-teal-700' },
+              }
+              const c = colors[n]
+              return `<button type="button" data-confidence="${n}" role="radio" aria-checked="${active}"
+                class="conf-btn rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50
+                  ${active ? c.active + ' border-transparent' : c.idle + ' hover:bg-surface-2'}"
+                aria-label="${t('form.confidence_' + n)}">${t('form.confidence_' + n)}</button>`
+            }).join('')}
+          </div>
+          <input type="hidden" name="confidence" id="confidence-input" value="${v('confidence')}" />
+        </div>
+        <div>
           <label for="f-applied-at" class="label">${t('form.applied_at')}</label>
           <input id="f-applied-at" name="applied_at" class="input" type="date" value="${v('applied_at') ? new Date(v('applied_at')).toISOString().slice(0, 10) : ''}" />
         </div>
@@ -193,6 +213,33 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
     })
   }
 
+  // Confidence picker
+  const confPicker = content.querySelector('#confidence-picker')
+  const confInput = content.querySelector('#confidence-input') as HTMLInputElement | null
+  if (confPicker && confInput) {
+    const confColors: Record<number, { active: string; idle: string }> = {
+      1: { active: 'bg-stone-500 text-white dark:bg-stone-400 dark:text-stone-950 border-transparent', idle: 'text-stone-500 border-stone-300 dark:border-stone-600' },
+      2: { active: 'bg-amber-500 text-white dark:bg-amber-400 dark:text-amber-950 border-transparent', idle: 'text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700' },
+      3: { active: 'bg-emerald-500 text-white dark:bg-emerald-400 dark:text-emerald-950 border-transparent', idle: 'text-emerald-600 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700' },
+      4: { active: 'bg-teal-500 text-white dark:bg-teal-400 dark:text-teal-950 border-transparent', idle: 'text-teal-600 border-teal-300 dark:text-teal-400 dark:border-teal-700' },
+    }
+    confPicker.querySelectorAll<HTMLButtonElement>('.conf-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const n = Number(btn.dataset.confidence)
+        const current = Number(confInput.value)
+        const value = current === n ? 0 : n
+        confInput.value = value > 0 ? String(value) : ''
+        confPicker.querySelectorAll<HTMLButtonElement>('.conf-btn').forEach(b => {
+          const bn = Number(b.dataset.confidence)
+          const isActive = bn === value
+          const c = confColors[bn]
+          b.className = `conf-btn rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${isActive ? c.active : c.idle + ' hover:bg-surface-2'}`
+          b.setAttribute('aria-checked', String(isActive))
+        })
+      })
+    })
+  }
+
   content.querySelector('#app-form')?.addEventListener('submit', async (e) => {
     e.preventDefault()
     const form = e.target as HTMLFormElement
@@ -225,6 +272,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       notes: data.notes || undefined,
       speech: data.speech || undefined,
       rating: data.rating ? Number(data.rating) : undefined,
+      confidence: data.confidence ? Number(data.confidence) : undefined,
     }
 
     try {

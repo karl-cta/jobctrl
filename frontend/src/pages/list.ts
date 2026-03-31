@@ -41,6 +41,7 @@ export async function ListPage(): Promise<HTMLElement> {
             </div>
             <div class="flex items-center gap-2.5 flex-wrap">
               <span class="badge ${STATUS_COLORS[app.status as ApplicationStatus]}">${statusLabel(app.status as ApplicationStatus)}</span>
+              ${app.confidence ? `<span class="w-2 h-2 rounded-full shrink-0 ${[,'bg-stone-400','bg-amber-500','bg-emerald-500','bg-teal-500'][app.confidence] || ''}" title="${t('form.confidence_' + app.confidence)}"></span>` : ''}
               ${app.location ? `<span class="text-xs text-muted flex items-center gap-1"><span aria-hidden="true" class="opacity-60">${icons.pin}</span> ${esc(app.location)}</span>` : ''}
               ${app.salary_min ? `<span class="text-xs text-muted tabular-nums font-medium">${app.salary_min / 1000}k\u2013${(app.salary_max ?? app.salary_min) / 1000}k \u20ac</span>` : ''}
               <span class="text-xs text-muted/60 tabular-nums">${new Date(app.created_at).toLocaleDateString(getDateLocale())}</span>

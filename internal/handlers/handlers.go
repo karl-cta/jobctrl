@@ -148,7 +148,7 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT a.id, a.company_name, a.company_website, a.company_industry, a.company_size,
 		a.company_location, a.job_title, a.job_url, a.job_description, a.contract_type, a.work_mode,
 		a.location, a.salary_min, a.salary_max, a.salary_currency, a.status, a.applied_at, a.source,
-		a.notes, a.speech, a.rating, a.created_at, a.updated_at,
+		a.notes, a.speech, a.rating, a.confidence, a.created_at, a.updated_at,
 		(SELECT COUNT(*) FROM interviews WHERE application_id = a.id) as interview_count,
 		(SELECT COUNT(*) FROM contacts WHERE application_id = a.id) as contact_count
 		FROM applications a WHERE 1=1`
@@ -217,7 +217,7 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 			&a.CompanyLocation, &a.JobTitle, &a.JobURL, &a.JobDescription,
 			&a.ContractType, &a.WorkMode, &a.Location,
 			&a.SalaryMin, &a.SalaryMax, &a.SalaryCurrency, &a.Status,
-			&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating,
+			&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating, &a.Confidence,
 			&a.CreatedAt, &a.UpdatedAt,
 			&a.InterviewCount, &a.ContactCount,
 		); err != nil {
@@ -253,7 +253,7 @@ func (h *Handler) GetApplication(w http.ResponseWriter, r *http.Request) {
 	row := h.db.QueryRowContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
 		company_size, company_location, job_title, job_url, job_description, contract_type, work_mode,
 		location, salary_min, salary_max, salary_currency, status, applied_at, source,
-		notes, speech, rating, created_at, updated_at FROM applications WHERE id = ?`, id)
+		notes, speech, rating, confidence, created_at, updated_at FROM applications WHERE id = ?`, id)
 	if err := scanApplication(row, &a); err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -311,11 +311,11 @@ func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 	_, err := h.db.ExecContext(r.Context(), `INSERT INTO applications
 		(id, company_name, company_website, company_industry, company_size, company_location,
 		job_title, job_url, job_description, contract_type, work_mode, location,
-		salary_min, salary_max, salary_currency, status, applied_at, source, notes, speech, rating,
-		created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		salary_min, salary_max, salary_currency, status, applied_at, source, notes, speech, rating, confidence,
+		created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		a.ID, a.CompanyName, a.CompanyWebsite, a.CompanyIndustry, a.CompanySize, a.CompanyLocation,
 		a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.WorkMode, a.Location,
-		a.SalaryMin, a.SalaryMax, a.SalaryCurrency, a.Status, appliedAtStr, a.Source, a.Notes, a.Speech, a.Rating,
+		a.SalaryMin, a.SalaryMax, a.SalaryCurrency, a.Status, appliedAtStr, a.Source, a.Notes, a.Speech, a.Rating, a.Confidence,
 		sqliteTime(a.CreatedAt), sqliteTime(a.UpdatedAt),
 	)
 	if err != nil {
@@ -367,11 +367,11 @@ func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 		company_name=?, company_website=?, company_industry=?, company_size=?, company_location=?,
 		job_title=?, job_url=?, job_description=?, contract_type=?, work_mode=?, location=?,
 		salary_min=?, salary_max=?, salary_currency=?, status=?, applied_at=?, source=?,
-		notes=?, speech=?, rating=?, updated_at=? WHERE id=?`,
+		notes=?, speech=?, rating=?, confidence=?, updated_at=? WHERE id=?`,
 		a.CompanyName, a.CompanyWebsite, a.CompanyIndustry, a.CompanySize, a.CompanyLocation,
 		a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.WorkMode, a.Location,
 		a.SalaryMin, a.SalaryMax, a.SalaryCurrency, a.Status, appliedAtStr, a.Source,
-		a.Notes, a.Speech, a.Rating, sqliteTime(a.UpdatedAt), id,
+		a.Notes, a.Speech, a.Rating, a.Confidence, sqliteTime(a.UpdatedAt), id,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "update failed")
@@ -749,7 +749,7 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.QueryContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
 		company_size, company_location, job_title, job_url, job_description, contract_type, work_mode,
 		location, salary_min, salary_max, salary_currency, status, applied_at, source,
-		notes, speech, rating, created_at, updated_at FROM applications ORDER BY created_at`)
+		notes, speech, rating, confidence, created_at, updated_at FROM applications ORDER BY created_at`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "query failed")
 		return
@@ -787,7 +787,7 @@ func scanApplication(s scanner, a *models.Application) error {
 		&a.CompanyLocation, &a.JobTitle, &a.JobURL, &a.JobDescription,
 		&a.ContractType, &a.WorkMode, &a.Location,
 		&a.SalaryMin, &a.SalaryMax, &a.SalaryCurrency, &a.Status,
-		&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating,
+		&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating, &a.Confidence,
 		&a.CreatedAt, &a.UpdatedAt,
 	)
 }

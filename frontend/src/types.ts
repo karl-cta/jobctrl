@@ -37,6 +37,7 @@ export interface Application {
   notes?: string
   speech?: string
   rating?: number
+  confidence?: number
   created_at: string
   updated_at: string
   interviews?: Interview[]

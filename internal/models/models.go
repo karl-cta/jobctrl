@@ -76,6 +76,7 @@ type Application struct {
 	Notes           *string           `json:"notes"`
 	Speech          *string           `json:"speech"`
 	Rating          *int              `json:"rating"`
+	Confidence      *int              `json:"confidence"`
 	CreatedAt       time.Time         `json:"created_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
 

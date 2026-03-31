@@ -381,10 +381,23 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     <p class="text-muted text-base ml-7 mb-2">${esc(app.job_title)}</p>
     ${app.location ? `<p class="text-muted/70 text-sm flex items-center gap-1.5 ml-7"><span aria-hidden="true" class="opacity-60">${icons.pin}</span> ${esc(app.location)}</p>` : ''}
   `
+  const confidenceColors: Record<number, string> = {
+    1: 'bg-stone-100 text-stone-600 dark:bg-stone-800/60 dark:text-stone-400',
+    2: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+    3: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
+    4: 'bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400',
+  }
+
   const statusRatingRow = document.createElement('div')
   statusRatingRow.className = 'flex items-center gap-3 mt-3 ml-7 flex-wrap'
   statusRatingRow.appendChild(statusWrapper)
   if (app.rating) statusRatingRow.appendChild(ratingEl)
+  if (app.confidence && app.confidence >= 1 && app.confidence <= 4) {
+    const confBadge = document.createElement('span')
+    confBadge.className = `badge ${confidenceColors[app.confidence]}`
+    confBadge.textContent = t('form.confidence_' + app.confidence)
+    statusRatingRow.appendChild(confBadge)
+  }
   titleGroup.appendChild(statusRatingRow)
 
   const actions = document.createElement('div')
