@@ -106,14 +106,14 @@ export function statusLabel(status: ApplicationStatus): string {
 }
 
 export const STATUS_COLORS: Record<ApplicationStatus, string> = {
-  Wishlist: 'bg-slate-100 text-slate-600 dark:bg-slate-800/80 dark:text-slate-300',
-  Applied: 'bg-sky-50 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
-  Screening: 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  Interviewing: 'bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-  Offer: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  Accepted: 'bg-teal-50 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
-  Rejected: 'bg-rose-50 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300',
-  Withdrawn: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800/60 dark:text-zinc-400',
+  Wishlist: 'bg-stone-100 text-stone-600 dark:bg-stone-800/60 dark:text-stone-400',
+  Applied: 'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400',
+  Screening: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+  Interviewing: 'bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-400',
+  Offer: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
+  Accepted: 'bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400',
+  Rejected: 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400',
+  Withdrawn: 'bg-stone-100 text-stone-500 dark:bg-stone-800/40 dark:text-stone-500',
 }
 
 export const ALL_STATUSES: ApplicationStatus[] = [

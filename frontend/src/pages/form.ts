@@ -14,7 +14,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
   const v = (field: keyof Application) => esc((existing?.[field] as string | undefined) ?? '')
 
   const content = document.createElement('div')
-  content.className = 'max-w-2xl space-y-6'
+  content.className = 'max-w-2xl space-y-6 stagger'
 
   const sectionColors: Record<string, string> = {
     company: 'bg-accent/40',
@@ -135,7 +135,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         </div>
         <div>
           <label class="label">${t('form.applied_at')}</label>
-          <input name="applied_at" class="input" type="datetime-local" value="${v('applied_at') ? new Date(v('applied_at')).toISOString().slice(0, 16) : ''}" />
+          <input name="applied_at" class="input" type="date" value="${v('applied_at') ? new Date(v('applied_at')).toISOString().slice(0, 10) : ''}" />
         </div>
       </div>
 
@@ -213,7 +213,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       salary_max: data.salary_max ? Number(data.salary_max) : undefined,
       salary_currency: 'EUR',
       status: data.status as Application['status'],
-      applied_at: data.applied_at || undefined,
+      applied_at: data.applied_at ? data.applied_at + 'T00:00:00Z' : undefined,
       source: data.source || undefined,
       notes: data.notes || undefined,
       speech: data.speech || undefined,

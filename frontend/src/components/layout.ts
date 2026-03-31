@@ -5,10 +5,10 @@ import { navigate } from '../router'
 
 function navLink(href: string, icon: string, label: string): string {
   const active = location.pathname === href || (href !== '/' && location.pathname.startsWith(href))
-  const base = 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
+  const base = 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
   const style = active
-    ? `${base} bg-accent/10 text-accent`
-    : `${base} text-muted hover:text-primary hover:bg-surface-2`
+    ? `${base} text-accent font-semibold`
+    : `${base} text-muted font-medium hover:text-primary hover:bg-surface-2/50`
   const ariaCurrent = active ? 'aria-current="page"' : ''
   return `<a href="${href}" data-link class="${style}" ${ariaCurrent}>${icon}<span>${label}</span></a>`
 }
@@ -24,11 +24,8 @@ export function createLayout(content: HTMLElement): HTMLElement {
     <a href="#main-content" class="skip-link">${t('common.skip_to_content')}</a>
 
     <aside id="sidebar" class="hidden lg:flex flex-col w-[220px] shrink-0 border-r border-border bg-surface-1 fixed inset-y-0 left-0 z-30" aria-label="${t('nav.sidebar')}">
-      <div class="h-14 flex items-center gap-2.5 px-5">
-        <div class="w-7 h-7 rounded-lg accent-glow flex items-center justify-center">
-          <span class="text-white [&>svg]:w-4 [&>svg]:h-4" aria-hidden="true">${icons.zap}</span>
-        </div>
-        <a href="/" data-link class="font-semibold text-[15px] text-primary hover:text-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded">Job-Ctrl</a>
+      <div class="h-14 flex items-center px-5">
+        <a href="/" data-link class="font-bold text-lg tracking-tight text-primary hover:opacity-70 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded">Job<span class="text-accent">Ctrl</span></a>
       </div>
       <nav class="flex-1 flex flex-col gap-0.5 px-3 pt-4" aria-label="${t('nav.main')}">
         ${navLink('/', icons.dashboard, t('nav.dashboard'))}
@@ -51,12 +48,7 @@ export function createLayout(content: HTMLElement): HTMLElement {
       <div class="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity" id="mobile-nav-overlay"></div>
       <aside class="absolute left-0 top-0 bottom-0 w-72 bg-surface-1 border-r border-border flex flex-col transform transition-transform">
         <div class="h-14 flex items-center justify-between px-4">
-          <span class="font-semibold text-[15px] text-primary flex items-center gap-2.5">
-            <div class="w-7 h-7 rounded-lg accent-glow flex items-center justify-center">
-              <span class="text-white [&>svg]:w-4 [&>svg]:h-4" aria-hidden="true">${icons.zap}</span>
-            </div>
-            Job-Ctrl
-          </span>
+          <span class="font-bold text-lg tracking-tight text-primary">Job<span class="text-accent">Ctrl</span></span>
           <button id="mobile-close-btn" class="btn-ghost p-1.5" aria-label="${t('common.close')}">${icons.close}</button>
         </div>
         <nav class="flex-1 flex flex-col gap-0.5 p-3" aria-label="${t('nav.main')}">
@@ -74,11 +66,8 @@ export function createLayout(content: HTMLElement): HTMLElement {
         <button id="mobile-menu-btn" class="lg:hidden btn-ghost p-1.5 -ml-1.5" aria-label="${t('nav.open_menu')}" aria-expanded="false" aria-controls="mobile-nav">
           ${icons.menu}
         </button>
-        <div class="lg:hidden flex items-center gap-2.5">
-          <div class="w-7 h-7 rounded-lg accent-glow flex items-center justify-center">
-            <span class="text-white [&>svg]:w-4 [&>svg]:h-4" aria-hidden="true">${icons.zap}</span>
-          </div>
-          <span class="font-semibold text-primary">Job-Ctrl</span>
+        <div class="lg:hidden">
+          <span class="font-bold text-lg tracking-tight text-primary">Job<span class="text-accent">Ctrl</span></span>
         </div>
         <div class="flex items-center gap-1 lg:hidden">
           <button id="mobile-locale-btn" class="btn-ghost p-1.5" aria-label="${locale === 'fr' ? 'Switch to English' : 'Passer en français'}">${icons.globe}</button>

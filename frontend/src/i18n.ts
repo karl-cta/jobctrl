@@ -308,3 +308,28 @@ export function getLocale(): string {
 export function getDateLocale(): string {
   return currentLocale === 'fr' ? 'fr-FR' : 'en-US'
 }
+
+export function translateTimelineEvent(eventType: string, description: string): string {
+  if (currentLocale === 'en') return description
+  switch (eventType) {
+    case 'created': return 'Candidature créée'
+    case 'interview_deleted': return 'Entretien supprimé'
+    case 'contact_deleted': return 'Contact supprimé'
+    case 'status_change': {
+      const m = description.match(/from (\w+) to (\w+)/)
+      if (m) return `${t('status.' + m[1])} → ${t('status.' + m[2])}`
+      return description
+    }
+    case 'interview_added': {
+      const m = description.match(/round (\d+) \(([^)]+)\)/)
+      if (m) return `Entretien tour ${m[1]} (${m[2]}) ajouté`
+      return description
+    }
+    case 'contact_added': {
+      const m = description.match(/Contact (.+) added/)
+      if (m) return `Contact ${m[1]} ajouté`
+      return description
+    }
+    default: return description
+  }
+}

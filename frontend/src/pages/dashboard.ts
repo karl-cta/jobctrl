@@ -2,7 +2,7 @@ import { api } from '../api'
 import { createLayout } from '../components/layout'
 import { t } from '../i18n'
 import { esc } from '../sanitize'
-import { statusLabel, STATUS_COLORS, ALL_STATUSES } from '../types'
+import { statusLabel, ALL_STATUSES } from '../types'
 import type { Stats } from '../types'
 
 function barChart(data: Array<{ period: string; count: number }>): string {
@@ -71,14 +71,14 @@ function statusChart(byStatus: Record<string, number>, total: number): string {
   }
 
   const statusBarColors: Record<string, string> = {
-    Wishlist: 'bg-slate-400 dark:bg-slate-500',
+    Wishlist: 'bg-stone-400 dark:bg-stone-500',
     Applied: 'bg-sky-500 dark:bg-sky-400',
     Screening: 'bg-amber-500 dark:bg-amber-400',
-    Interviewing: 'bg-violet-500 dark:bg-violet-400',
+    Interviewing: 'bg-orange-500 dark:bg-orange-400',
     Offer: 'bg-emerald-500 dark:bg-emerald-400',
     Accepted: 'bg-teal-500 dark:bg-teal-400',
     Rejected: 'bg-rose-400 dark:bg-rose-400',
-    Withdrawn: 'bg-zinc-400 dark:bg-zinc-500',
+    Withdrawn: 'bg-stone-400 dark:bg-stone-500',
   }
 
   return active.map(s => {
@@ -100,7 +100,7 @@ export async function DashboardPage(): Promise<HTMLElement> {
   const stats = await api.stats().catch(() => null) as Stats | null
 
   const content = document.createElement('div')
-  content.className = 'space-y-8'
+  content.className = 'space-y-8 stagger'
 
   const total = stats?.total ?? 0
   const overTime = stats?.over_time ?? []
@@ -113,9 +113,9 @@ export async function DashboardPage(): Promise<HTMLElement> {
   ]
 
   const colorMap: Record<string, { dot: string; text: string }> = {
-    accent: { dot: 'bg-accent', text: 'text-accent' },
-    violet: { dot: 'bg-violet-500', text: 'text-violet-600 dark:text-violet-400' },
-    sky: { dot: 'bg-sky-500', text: 'text-sky-600 dark:text-sky-400' },
+    accent: { dot: 'bg-accent', text: 'text-primary' },
+    violet: { dot: 'bg-orange-500', text: 'text-orange-600 dark:text-orange-400' },
+    sky: { dot: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400' },
     emerald: { dot: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' },
   }
 
@@ -124,27 +124,24 @@ export async function DashboardPage(): Promise<HTMLElement> {
       <h1 class="text-2xl font-bold text-primary tracking-tight">${t('dashboard.title')}</h1>
     </div>
 
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-8">
       ${statCards.map(({ label, value, color }) => {
         const c = colorMap[color]
         return `
-        <div class="card group">
-          <div class="flex items-center gap-2 mb-3">
-            <div class="w-2 h-2 rounded-full ${c.dot}"></div>
-            <p class="text-xs text-muted font-medium uppercase tracking-wider">${label}</p>
-          </div>
-          <p class="text-3xl font-bold ${c.text} tabular-nums">${value}</p>
+        <div>
+          <p class="text-4xl font-bold ${c.text} tabular-nums font-mono tracking-tight">${value}</p>
+          <p class="text-xs text-muted font-medium uppercase tracking-wider mt-2">${label}</p>
         </div>`
       }).join('')}
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      <div class="card">
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+      <div class="card lg:col-span-3">
         <h2 class="text-sm font-semibold text-primary mb-5">${t('dashboard.over_time')}</h2>
         ${barChart(overTime)}
       </div>
 
-      <div class="card">
+      <div class="card lg:col-span-2">
         <h2 class="text-sm font-semibold text-primary mb-5">${t('dashboard.status_distribution')}</h2>
         <div class="space-y-3">
           ${statusChart(stats?.by_status ?? {}, total)}
@@ -152,15 +149,15 @@ export async function DashboardPage(): Promise<HTMLElement> {
       </div>
     </div>
 
-    <div class="card">
-      <h2 class="text-sm font-semibold text-primary mb-5">${t('dashboard.pipeline')}</h2>
-      <div class="grid grid-cols-2 xs:grid-cols-4 sm:grid-cols-8 gap-3">
+    <div>
+      <h2 class="text-sm font-semibold text-primary mb-4">${t('dashboard.pipeline')}</h2>
+      <div class="grid grid-cols-4 sm:grid-cols-8 gap-px bg-border rounded-lg overflow-hidden">
         ${ALL_STATUSES.map(s => {
           const count = stats?.by_status?.[s] ?? 0
           return `
-          <div class="text-center py-3 px-2 rounded-lg bg-surface-2/60 hover:bg-surface-2 transition-colors">
-            <div class="text-2xl font-bold text-primary tabular-nums mb-1.5">${count}</div>
-            <span class="badge ${STATUS_COLORS[s]} text-[10px]">${statusLabel(s)}</span>
+          <div class="text-center py-4 bg-surface-1 hover:bg-surface-2/50 transition-colors">
+            <div class="text-xl font-bold text-primary tabular-nums font-mono">${count}</div>
+            <div class="text-[11px] text-muted mt-1.5 font-medium">${statusLabel(s)}</div>
           </div>`
         }).join('')}
       </div>

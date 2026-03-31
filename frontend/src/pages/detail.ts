@@ -3,7 +3,7 @@ import { createLayout } from '../components/layout'
 import { openModal } from '../components/modal'
 import { navigate } from '../router'
 import { toast } from '../components/toast'
-import { t, getDateLocale } from '../i18n'
+import { t, getDateLocale, translateTimelineEvent } from '../i18n'
 import { icons } from '../icons'
 import { esc, sanitizeUrl, safeHostname } from '../sanitize'
 import {
@@ -225,7 +225,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const dateFmt = getDateLocale()
 
   const content = document.createElement('div')
-  content.className = 'space-y-6 max-w-5xl'
+  content.className = 'space-y-6 max-w-5xl stagger'
 
   const header = document.createElement('div')
   header.className = 'flex flex-col sm:flex-row sm:items-start justify-between gap-4'
@@ -264,7 +264,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         })
         toast(statusLabel(s), 'success')
       } catch {
-        toast('Error updating status', 'error')
+        toast(t('form.error'), 'error')
       }
     })
     statusDropdown.appendChild(item)
@@ -381,7 +381,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         app.notes = notesTA.value || undefined
         toast(t('detail.save'), 'success')
       } catch {
-        toast('Error', 'error')
+        toast(t('form.error'), 'error')
       }
     })
     notesPanel.appendChild(notesTA)
@@ -404,7 +404,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       app.speech = prepTA.value || undefined
       toast(t('detail.save'), 'success')
     } catch {
-      toast('Error', 'error')
+      toast(t('form.error'), 'error')
     }
   })
   prepPanel.appendChild(prepTA)
@@ -431,7 +431,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
           renderInterviews(list)
           toast(t('detail.interview_add_title'), 'success')
         } catch {
-          toast('Error', 'error')
+          toast(t('form.error'), 'error')
         }
       })
     })
@@ -463,8 +463,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             ${iv.notes ? `<p class="text-xs text-muted/70 mt-2 line-clamp-2">${esc(iv.notes)}</p>` : ''}
           </div>
           <div class="flex gap-1 shrink-0">
-            <button class="btn-ghost p-1.5" data-edit-iv="${iv.id}" aria-label="Edit">${icons.edit}</button>
-            <button class="btn-danger p-1.5" data-del-iv="${iv.id}" aria-label="Delete">${icons.trash}</button>
+            <button class="btn-ghost p-1.5" data-edit-iv="${iv.id}" aria-label="${t('detail.edit')}">${icons.edit}</button>
+            <button class="btn-danger p-1.5" data-del-iv="${iv.id}" aria-label="${t('detail.delete')}">${icons.trash}</button>
           </div>
         </div>
       `
@@ -480,7 +480,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             renderInterviews(list)
             toast(t('detail.interview_edit_title'), 'success')
           } catch {
-            toast('Error', 'error')
+            toast(t('form.error'), 'error')
           }
         })
       })
@@ -504,7 +504,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             overlay.remove()
             renderInterviews(list)
           } catch {
-            toast('Error', 'error')
+            toast(t('form.error'), 'error')
           }
         })
       })
@@ -537,7 +537,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
           renderContacts(list)
           toast(t('detail.contact_add_title'), 'success')
         } catch {
-          toast('Error', 'error')
+          toast(t('form.error'), 'error')
         }
       })
     })
@@ -569,8 +569,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
           </div>
         </div>
         <div class="flex gap-1 shrink-0">
-          <button class="btn-ghost p-1.5" data-edit-c="${c.id}" aria-label="Edit">${icons.edit}</button>
-          <button class="btn-danger p-1.5" data-del-c="${c.id}" aria-label="Delete">${icons.trash}</button>
+          <button class="btn-ghost p-1.5" data-edit-c="${c.id}" aria-label="${t('detail.edit')}">${icons.edit}</button>
+          <button class="btn-danger p-1.5" data-del-c="${c.id}" aria-label="${t('detail.delete')}">${icons.trash}</button>
         </div>
       `
       row.querySelector(`[data-edit-c="${c.id}"]`)?.addEventListener('click', () => {
@@ -586,7 +586,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             renderContacts(list)
             toast(t('detail.contact_edit_title'), 'success')
           } catch {
-            toast('Error', 'error')
+            toast(t('form.error'), 'error')
           }
         })
       })
@@ -610,7 +610,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             overlay.remove()
             renderContacts(list)
           } catch {
-            toast('Error', 'error')
+            toast(t('form.error'), 'error')
           }
         })
       })
@@ -632,13 +632,14 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     const lineDiv = document.createElement('div')
     lineDiv.className = 'absolute left-0 top-2 bottom-2 w-px bg-border'
     list.appendChild(lineDiv)
+    const dotColors: Record<string, string> = { created: 'bg-emerald-500', status_change: 'bg-accent', interview_added: 'bg-orange-400', interview_deleted: 'bg-orange-400', contact_added: 'bg-teal-500', contact_deleted: 'bg-teal-500' }
     ;[...app.timeline_events].reverse().forEach(e => {
       const row = document.createElement('div')
       row.className = 'flex items-start gap-3 relative pl-5 pb-5 last:pb-0'
       row.innerHTML = `
-        <div class="absolute left-0 top-2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-accent ring-2 ring-surface-1 shrink-0"></div>
+        <div class="absolute left-0 top-2 -translate-x-1/2 w-2.5 h-2.5 rounded-full ${dotColors[e.event_type] || 'bg-accent'} ring-2 ring-surface-1 shrink-0"></div>
         <div>
-          <p class="text-sm text-primary/80">${esc(e.description)}</p>
+          <p class="text-sm text-primary/80">${esc(translateTimelineEvent(e.event_type, e.description))}</p>
           <p class="text-xs text-muted/60 mt-0.5 tabular-nums">${new Date(e.created_at).toLocaleString(dateFmt)}</p>
         </div>
       `
@@ -719,7 +720,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         overlay.remove()
         navigate('/applications')
       } catch {
-        toast('Error deleting application', 'error')
+        toast(t('form.error'), 'error')
       }
     })
   })
