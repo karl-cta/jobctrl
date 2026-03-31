@@ -196,7 +196,7 @@ func applyJobPosting(r *Result, ld *jobPostingLD) {
 				if site == "" {
 					site = org.URL
 				}
-				if s := clean(site); s != "" {
+				if s := clean(site); s != "" && isCompanyWebsite(s) {
 					r.CompanyWebsite = &s
 				}
 			}
@@ -450,24 +450,40 @@ func cleanHTML(s string) string {
 	return s
 }
 
+// isCompanyWebsite returns true if the URL looks like an actual company website,
+// not a profile page on a job board (e.g. indeed.com/cmp/... or linkedin.com/company/...).
+func isCompanyWebsite(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	host := strings.ToLower(parsed.Host)
+	jobBoards := []string{"indeed", "linkedin", "glassdoor", "monster", "seek", "wttj", "welcometothejungle", "jobs.ie", "irishjobs"}
+	for _, board := range jobBoards {
+		if strings.Contains(host, board) {
+			return false
+		}
+	}
+	return true
+}
+
 func cleanDomain(host string) string {
 	host = strings.ToLower(host)
 	host = strings.TrimPrefix(host, "www.")
-	// Return the recognizable part
-	parts := strings.Split(host, ".")
-	if len(parts) >= 2 {
-		// "jobs.ie" -> "jobs.ie", "indeed.com" -> "Indeed", "linkedin.com" -> "LinkedIn"
-		known := map[string]string{
-			"indeed":   "Indeed",
-			"linkedin": "LinkedIn",
-			"glassdoor": "Glassdoor",
-			"monster":  "Monster",
-			"jobs":     host, // jobs.ie etc — keep full domain
-		}
-		if name, ok := known[parts[0]]; ok {
+	// Match known job boards by any domain part (handles ie.indeed.com, fr.linkedin.com, etc.)
+	known := map[string]string{
+		"indeed":      "Indeed",
+		"linkedin":    "LinkedIn",
+		"glassdoor":   "Glassdoor",
+		"monster":     "Monster",
+		"welcometothejungle": "Welcome to the Jungle",
+		"wttj":        "Welcome to the Jungle",
+		"jobs":        host, // jobs.ie etc — keep full domain
+	}
+	for _, part := range strings.Split(host, ".") {
+		if name, ok := known[part]; ok {
 			return name
 		}
-		return host
 	}
 	return host
 }

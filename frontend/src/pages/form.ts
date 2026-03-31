@@ -196,17 +196,32 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
   const extractBtn = content.querySelector('#extract-btn') as HTMLButtonElement | null
   const extractInput = content.querySelector('#f-extract-url') as HTMLInputElement | null
   if (extractBtn && extractInput) {
+    // Track which fields were filled by extraction (not manually edited)
+    const extractedFields = new Set<string>()
+
     const setField = (id: string, value: string | undefined) => {
-      if (!value) return
       const el = content.querySelector('#' + id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null
       if (!el) return
-      // Only fill empty fields — don't overwrite user input
-      if (el.value && el.value !== 'CDI' && el.value !== 'Hybrid' && el.value !== 'Wishlist') return
+      if (!value) {
+        // Clear if this field was previously filled by extraction
+        if (extractedFields.has(id)) {
+          if (el.tagName === 'SELECT') {
+            (el as HTMLSelectElement).selectedIndex = 0
+          } else {
+            el.value = ''
+          }
+          extractedFields.delete(id)
+        }
+        return
+      }
+      // Skip if field has user-typed content (not from a previous extraction)
+      if (el.value && !extractedFields.has(id) && el.value !== 'CDI' && el.value !== 'Hybrid' && el.value !== 'Wishlist') return
       if (el.tagName === 'SELECT') {
         const option = el.querySelector(`option[value="${value}"]`) as HTMLOptionElement | null
-        if (option) el.value = value
+        if (option) { el.value = value; extractedFields.add(id) }
       } else {
         el.value = value
+        extractedFields.add(id)
       }
     }
 
@@ -222,7 +237,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         // Count meaningful fields (not just source/url)
         const meaningful = [data.company_name, data.job_title, data.location, data.company_website].filter(Boolean).length
 
-        // Always fill what we got
+        // Fill (or clear previously extracted) fields
         setField('f-company-name', data.company_name)
         setField('f-company-website', data.company_website)
         setField('f-company-location', data.company_location)
@@ -231,9 +246,9 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         setField('f-job-description', data.job_description)
         setField('f-location', data.location)
         setField('f-source', data.source)
-        if (data.contract_type) setField('f-contract-type', data.contract_type)
-        if (data.work_mode) setField('f-work-mode', data.work_mode)
-        if (data.salary) setField('f-salary', String(data.salary))
+        setField('f-contract-type', data.contract_type)
+        setField('f-work-mode', data.work_mode)
+        setField('f-salary', data.salary ? String(data.salary) : undefined)
 
         if (meaningful === 0) {
           toast(t('form.extract_partial'), 'info')
