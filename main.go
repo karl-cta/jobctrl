@@ -34,7 +34,7 @@ func main() {
 
 	handler := server.New(database, frontendFS, Version)
 
-	log.Printf("Starting Job-Ctrl on %s", addr)
+	log.Printf("Starting JobCtrl on %s", addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

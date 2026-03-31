@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="frontend/public/favicon.svg" width="64" height="64" alt="Job-Ctrl" />
+  <img src="frontend/public/favicon.svg" width="64" height="64" alt="JobCtrl" />
 </p>
 
-<h1 align="center">Job-Ctrl</h1>
+<h1 align="center">JobCtrl</h1>
 
 <p align="center">
   Self-hosted job application tracker. Single Go binary, SQLite database, zero cloud dependencies.
@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src=".github/jobctrl-dashboard.png" alt="Job-Ctrl Dashboard" />
+  <img src=".github/jobctrl-dashboard.png" alt="JobCtrl Dashboard" />
 </p>
 
 ## Features
