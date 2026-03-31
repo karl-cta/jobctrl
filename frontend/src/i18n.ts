@@ -116,7 +116,12 @@ const fr: Translations = {
   'form.salary_min': 'Salaire min (€/an)',
   'form.salary_max': 'Salaire max (€/an)',
   'form.status': 'Statut',
-  'form.rating': 'Note (1-5)',
+  'form.rating': 'Mon intérêt',
+  'form.rating_1': 'Bof',
+  'form.rating_2': 'Moyen',
+  'form.rating_3': 'Intéressant',
+  'form.rating_4': 'Très motivé',
+  'form.rating_5': 'Poste rêvé',
   'form.applied_at': 'Date de candidature',
   'form.notes_section': 'Notes & Préparation',
   'form.notes': 'Notes',
@@ -129,6 +134,7 @@ const fr: Translations = {
   'form.saved': 'Candidature sauvegardée',
   'form.created': 'Candidature créée',
   'form.error': 'Une erreur est survenue',
+  'form.field_required': 'Ce champ est obligatoire',
 
   // Statuses
   'status.Wishlist': 'Wishlist',
@@ -265,7 +271,12 @@ const en: Translations = {
   'form.salary_min': 'Min salary (€/yr)',
   'form.salary_max': 'Max salary (€/yr)',
   'form.status': 'Status',
-  'form.rating': 'Rating (1-5)',
+  'form.rating': 'My interest',
+  'form.rating_1': 'Meh',
+  'form.rating_2': 'Okay',
+  'form.rating_3': 'Interesting',
+  'form.rating_4': 'Very motivated',
+  'form.rating_5': 'Dream job',
   'form.applied_at': 'Application date',
   'form.notes_section': 'Notes & Preparation',
   'form.notes': 'Notes',
@@ -278,6 +289,7 @@ const en: Translations = {
   'form.saved': 'Application saved',
   'form.created': 'Application created',
   'form.error': 'An error occurred',
+  'form.field_required': 'This field is required',
 
   // Statuses
   'status.Wishlist': 'Wishlist',

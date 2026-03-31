@@ -32,123 +32,126 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
     <form id="app-form" class="space-y-5">
       <div class="card space-y-4 relative overflow-hidden">
         <div class="absolute left-0 top-0 bottom-0 w-0.5 ${sectionColors.company}"></div>
-        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.company')}</h2>
+        <h2 class="text-sm font-semibold text-primary/70">${t('form.company')}</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label class="label">${t('form.company_name')} *</label>
-            <input name="company_name" class="input" required value="${v('company_name')}" />
+            <label for="f-company-name" class="label">${t('form.company_name')} *</label>
+            <input id="f-company-name" name="company_name" class="input" required value="${v('company_name')}" />
           </div>
           <div>
-            <label class="label">${t('form.company_website')}</label>
-            <input name="company_website" class="input" type="url" value="${v('company_website')}" />
+            <label for="f-company-website" class="label">${t('form.company_website')}</label>
+            <input id="f-company-website" name="company_website" class="input" type="url" value="${v('company_website')}" />
           </div>
           <div>
-            <label class="label">${t('form.company_industry')}</label>
-            <input name="company_industry" class="input" value="${v('company_industry')}" />
+            <label for="f-company-industry" class="label">${t('form.company_industry')}</label>
+            <input id="f-company-industry" name="company_industry" class="input" value="${v('company_industry')}" />
           </div>
           <div>
-            <label class="label">${t('form.company_size')}</label>
-            <input name="company_size" class="input" placeholder="${t('form.company_size_placeholder')}" value="${v('company_size')}" />
+            <label for="f-company-size" class="label">${t('form.company_size')}</label>
+            <input id="f-company-size" name="company_size" class="input" placeholder="${t('form.company_size_placeholder')}" value="${v('company_size')}" />
           </div>
           <div>
-            <label class="label">${t('form.company_location')}</label>
-            <input name="company_location" class="input" value="${v('company_location')}" />
+            <label for="f-company-location" class="label">${t('form.company_location')}</label>
+            <input id="f-company-location" name="company_location" class="input" value="${v('company_location')}" />
           </div>
         </div>
       </div>
 
       <div class="card space-y-4 relative overflow-hidden">
         <div class="absolute left-0 top-0 bottom-0 w-0.5 ${sectionColors.position}"></div>
-        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.position')}</h2>
+        <h2 class="text-sm font-semibold text-primary/70">${t('form.position')}</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label class="label">${t('form.job_title')} *</label>
-            <input name="job_title" class="input" required value="${v('job_title')}" />
+            <label for="f-job-title" class="label">${t('form.job_title')} *</label>
+            <input id="f-job-title" name="job_title" class="input" required value="${v('job_title')}" />
           </div>
           <div>
-            <label class="label">${t('form.job_url')}</label>
-            <input name="job_url" class="input" type="url" value="${v('job_url')}" />
+            <label for="f-job-url" class="label">${t('form.job_url')}</label>
+            <input id="f-job-url" name="job_url" class="input" type="url" value="${v('job_url')}" />
           </div>
           <div>
-            <label class="label">${t('form.contract_type')}</label>
-            <select name="contract_type" class="select">
+            <label for="f-contract-type" class="label">${t('form.contract_type')}</label>
+            <select id="f-contract-type" name="contract_type" class="select">
               ${['CDI', 'CDD', 'Freelance', 'Internship', 'Other'].map(ct =>
                 `<option value="${ct}" ${v('contract_type') === ct ? 'selected' : ''}>${ct}</option>`
               ).join('')}
             </select>
           </div>
           <div>
-            <label class="label">${t('form.work_mode')}</label>
-            <select name="work_mode" class="select">
+            <label for="f-work-mode" class="label">${t('form.work_mode')}</label>
+            <select id="f-work-mode" name="work_mode" class="select">
               ${['On-site', 'Hybrid', 'Remote'].map(m =>
                 `<option value="${m}" ${v('work_mode') === m ? 'selected' : ''}>${m}</option>`
               ).join('')}
             </select>
           </div>
           <div>
-            <label class="label">${t('form.location')}</label>
-            <input name="location" class="input" value="${v('location')}" />
+            <label for="f-location" class="label">${t('form.location')}</label>
+            <input id="f-location" name="location" class="input" value="${v('location')}" />
           </div>
           <div>
-            <label class="label">${t('form.source')}</label>
-            <input name="source" class="input" placeholder="${t('form.source_placeholder')}" value="${v('source')}" />
+            <label for="f-source" class="label">${t('form.source')}</label>
+            <input id="f-source" name="source" class="input" placeholder="${t('form.source_placeholder')}" value="${v('source')}" />
           </div>
         </div>
         <div>
-          <label class="label">${t('form.description')}</label>
-          <textarea name="job_description" class="input min-h-[100px]">${v('job_description')}</textarea>
+          <label for="f-job-description" class="label">${t('form.description')}</label>
+          <textarea id="f-job-description" name="job_description" class="input min-h-[100px]">${v('job_description')}</textarea>
         </div>
       </div>
 
       <div class="card space-y-4 relative overflow-hidden">
         <div class="absolute left-0 top-0 bottom-0 w-0.5 ${sectionColors.salary}"></div>
-        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.salary_status')}</h2>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <h2 class="text-sm font-semibold text-primary/70">${t('form.salary_status')}</h2>
+        <div class="grid grid-cols-1 xs:grid-cols-3 gap-4">
           <div>
-            <label class="label">${t('form.salary_min')}</label>
-            <input name="salary_min" class="input" type="number" step="1000" value="${v('salary_min')}" />
+            <label for="f-salary-min" class="label">${t('form.salary_min')}</label>
+            <input id="f-salary-min" name="salary_min" class="input" type="number" step="1000" value="${v('salary_min')}" />
           </div>
           <div>
-            <label class="label">${t('form.salary_max')}</label>
-            <input name="salary_max" class="input" type="number" step="1000" value="${v('salary_max')}" />
+            <label for="f-salary-max" class="label">${t('form.salary_max')}</label>
+            <input id="f-salary-max" name="salary_max" class="input" type="number" step="1000" value="${v('salary_max')}" />
           </div>
           <div>
-            <label class="label">${t('form.status')}</label>
-            <select name="status" class="select">
+            <label for="f-status" class="label">${t('form.status')}</label>
+            <select id="f-status" name="status" class="select">
               ${ALL_STATUSES.map(s =>
                 `<option value="${s}" ${v('status') === s ? 'selected' : ''}>${statusLabel(s)}</option>`
               ).join('')}
             </select>
           </div>
-          <div>
-            <label class="label">${t('form.rating')}</label>
-            <div class="flex gap-1 mt-1.5" id="star-picker" role="radiogroup" aria-label="${t('form.rating')}">
-              ${[1,2,3,4,5].map(n => `
-                <button type="button" data-star="${n}" role="radio" aria-checked="${Number(v('rating')) === n}"
-                  class="star-btn text-2xl leading-none transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded
-                    ${Number(v('rating')) >= n ? 'text-amber-400' : 'text-surface-3 hover:text-amber-300'}"
-                  aria-label="${n}">&#9733;</button>
-              `).join('')}
-            </div>
-            <input type="hidden" name="rating" id="rating-input" value="${v('rating')}" />
-          </div>
         </div>
         <div>
-          <label class="label">${t('form.applied_at')}</label>
-          <input name="applied_at" class="input" type="date" value="${v('applied_at') ? new Date(v('applied_at')).toISOString().slice(0, 10) : ''}" />
+          <label class="label">${t('form.rating')}</label>
+          <div class="flex items-center gap-3">
+            <div class="flex" id="star-picker" role="radiogroup" aria-label="${t('form.rating')}">
+              ${[1,2,3,4,5].map(n => `
+                <button type="button" data-star="${n}" role="radio" aria-checked="${Number(v('rating')) === n}"
+                  class="star-btn text-2xl leading-none transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded p-1.5
+                    ${Number(v('rating')) >= n ? 'text-amber-400' : 'text-surface-3 hover:text-amber-300'}"
+                  aria-label="${t('form.rating_' + n)}">&#9733;</button>
+              `).join('')}
+            </div>
+            <span id="rating-hint" class="text-sm text-muted transition-colors">${Number(v('rating')) ? t('form.rating_' + v('rating')) : ''}</span>
+          </div>
+          <input type="hidden" name="rating" id="rating-input" value="${v('rating')}" />
+        </div>
+        <div>
+          <label for="f-applied-at" class="label">${t('form.applied_at')}</label>
+          <input id="f-applied-at" name="applied_at" class="input" type="date" value="${v('applied_at') ? new Date(v('applied_at')).toISOString().slice(0, 10) : ''}" />
         </div>
       </div>
 
       <div class="card space-y-4 relative overflow-hidden">
         <div class="absolute left-0 top-0 bottom-0 w-0.5 ${sectionColors.notes}"></div>
-        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.notes_section')}</h2>
+        <h2 class="text-sm font-semibold text-primary/70">${t('form.notes_section')}</h2>
         <div>
-          <label class="label">${t('form.notes')}</label>
-          <textarea name="notes" class="input min-h-[80px]" placeholder="${t('form.notes_placeholder')}">${v('notes')}</textarea>
+          <label for="f-notes" class="label">${t('form.notes')}</label>
+          <textarea id="f-notes" name="notes" class="input min-h-[80px]" placeholder="${t('form.notes_placeholder')}">${v('notes')}</textarea>
         </div>
         <div>
-          <label class="label">${t('form.speech')}</label>
-          <textarea name="speech" class="input min-h-[80px] font-mono text-sm" placeholder="${t('form.speech_placeholder')}">${v('speech')}</textarea>
+          <label for="f-speech" class="label">${t('form.speech')}</label>
+          <textarea id="f-speech" name="speech" class="input min-h-[80px] font-mono text-sm" placeholder="${t('form.speech_placeholder')}">${v('speech')}</textarea>
         </div>
       </div>
 
@@ -164,6 +167,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
 
   const starPicker = content.querySelector('#star-picker')
   const ratingInput = content.querySelector('#rating-input') as HTMLInputElement | null
+  const ratingHint = content.querySelector('#rating-hint')
   if (starPicker && ratingInput) {
     const updateStars = (value: number) => {
       ratingInput.value = value > 0 ? String(value) : ''
@@ -176,6 +180,9 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         btn.classList.add(active ? 'text-amber-400' : 'text-surface-3', 'hover:text-amber-300')
         btn.setAttribute('aria-checked', String(value === n))
       })
+      if (ratingHint) {
+        ratingHint.textContent = value > 0 ? t('form.rating_' + value) : ''
+      }
     }
     starPicker.querySelectorAll<HTMLButtonElement>('.star-btn').forEach(btn => {
       btn.addEventListener('click', () => {

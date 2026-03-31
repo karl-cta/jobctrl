@@ -17,10 +17,11 @@ export async function ListPage(): Promise<HTMLElement> {
 
   function renderTable(apps: Application[]): string {
     if (apps.length === 0) return `
-      <div class="card text-center py-20">
-        <div class="text-muted/20 mb-4 flex justify-center">${icons.briefcaseLg}</div>
-        <p class="text-muted text-base mb-5">${t('list.empty')}</p>
-        <a href="/applications/new" data-link class="btn-primary mt-2 inline-flex gap-1.5">${icons.plus} ${t('list.add_first')}</a>
+      <div class="text-center py-24">
+        <div class="text-muted/15 mb-6 flex justify-center">${icons.briefcaseLg}</div>
+        <p class="text-primary text-lg font-semibold mb-2">${t('list.empty')}</p>
+        <p class="text-muted text-sm mb-8">${t('list.empty_hint')}</p>
+        <a href="/applications/new" data-link class="btn-primary gap-1.5">${icons.plus} ${t('list.add_first')}</a>
       </div>
     `
     return `<div class="space-y-2">
@@ -47,7 +48,7 @@ export async function ListPage(): Promise<HTMLElement> {
           </div>
           <div class="flex items-center gap-2 shrink-0">
             ${app.rating ? `<span class="text-amber-400 text-sm flex gap-px">${Array.from({ length: app.rating }, () => icons.star).join('')}</span>` : ''}
-            <button data-delete-id="${app.id}" class="btn-ghost opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 text-red-500 dark:text-red-400 hover:bg-red-500/10 p-1.5 transition-all duration-150" title="${t('detail.delete')}">
+            <button data-delete-id="${app.id}" class="btn-ghost opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 text-red-500 dark:text-red-400 hover:bg-red-500/10 p-1.5 min-w-[44px] min-h-[44px] transition-all duration-150" title="${t('detail.delete')}">
               ${icons.trash}
             </button>
           </div>
@@ -94,7 +95,7 @@ export async function ListPage(): Promise<HTMLElement> {
                         <span class="text-xs text-muted/70 tabular-nums font-medium">${app.salary_min ? `${app.salary_min / 1000}k\u2013${(app.salary_max ?? app.salary_min) / 1000}k \u20ac` : ''}</span>
                         ${app.rating ? `<span class="text-amber-400 text-xs flex gap-px shrink-0">${Array.from({ length: app.rating }, () => icons.star).join('')}</span>` : ''}
                       </div>
-                      ${app.applied_at ? `<div class="text-[11px] text-muted/50 mt-1.5 tabular-nums">${new Date(app.applied_at).toLocaleDateString(getDateLocale())}</div>` : ''}
+                      ${app.applied_at ? `<div class="text-xs text-muted/60 mt-1.5 tabular-nums">${new Date(app.applied_at).toLocaleDateString(getDateLocale())}</div>` : ''}
                     </div>
                   `).join('')}
                 </div>
@@ -106,87 +107,7 @@ export async function ListPage(): Promise<HTMLElement> {
     `
   }
 
-  async function load() {
-    const resp = await api.applications.list({
-      status: statusFilter,
-      search: searchQuery,
-      per_page: viewMode === 'kanban' ? 200 : 20,
-    }).catch(() => ({ data: [], total: 0, page: 1, per_page: 20, total_pages: 1 }))
-    const apps = resp.data
-
-    const viewToggle = `
-      <div class="flex items-center gap-0.5 rounded-lg border border-border p-0.5 bg-surface">
-        <button
-          id="view-table"
-          class="p-1.5 rounded-md transition-all duration-150 ${viewMode === 'table' ? 'bg-accent/15 text-accent shadow-sm' : 'text-muted hover:text-primary'}"
-          title="${t('list.view_table')}"
-          aria-pressed="${viewMode === 'table'}"
-        >${icons.tableView}</button>
-        <button
-          id="view-kanban"
-          class="p-1.5 rounded-md transition-all duration-150 ${viewMode === 'kanban' ? 'bg-accent/15 text-accent shadow-sm' : 'text-muted hover:text-primary'}"
-          title="${t('list.view_kanban')}"
-          aria-pressed="${viewMode === 'kanban'}"
-        >${icons.kanban}</button>
-      </div>
-    `
-
-    content.innerHTML = `
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 class="text-2xl font-bold text-primary tracking-tight">${t('list.title')}</h1>
-        <div class="flex items-center gap-3">
-          ${viewToggle}
-          <a href="/applications/new" data-link class="btn-primary gap-1.5">${icons.plus} ${t('list.new')}</a>
-        </div>
-      </div>
-
-      <div class="flex flex-col sm:flex-row gap-3">
-        <div class="flex-1 relative">
-          <label for="search-input" class="sr-only">${t('common.search')}</label>
-          <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted/50 pointer-events-none" aria-hidden="true">${icons.search}</span>
-          <input
-            type="search"
-            id="search-input"
-            placeholder="${t('list.search')}"
-            class="input pl-10"
-            value="${searchQuery}"
-          />
-        </div>
-        <div class="sm:w-48">
-          <label for="status-filter" class="sr-only">${t('common.filter_status')}</label>
-          <select id="status-filter" class="select">
-            <option value="">${t('list.all_statuses')}</option>
-            ${ALL_STATUSES.map(s => `<option value="${s}" ${statusFilter === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-
-      <div id="apps-content">
-        ${viewMode === 'kanban' ? renderKanban(apps) : renderTable(apps)}
-      </div>
-    `
-
-    content.querySelector('#view-table')?.addEventListener('click', () => {
-      viewMode = 'table'
-      localStorage.setItem('jc-view', 'table')
-      load()
-    })
-    content.querySelector('#view-kanban')?.addEventListener('click', () => {
-      viewMode = 'kanban'
-      localStorage.setItem('jc-view', 'kanban')
-      load()
-    })
-
-    content.querySelector('#search-input')?.addEventListener('input', (e) => {
-      searchQuery = (e.target as HTMLInputElement).value
-      if (debounceTimer) clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(() => load(), 200)
-    })
-    content.querySelector('#status-filter')?.addEventListener('change', (e) => {
-      statusFilter = (e.target as HTMLSelectElement).value
-      load()
-    })
-
+  function attachCardListeners() {
     content.querySelectorAll('[data-app-id]').forEach(el => {
       const navToApp = (e: Event) => {
         const target = e.target as HTMLElement
@@ -209,6 +130,110 @@ export async function ListPage(): Promise<HTMLElement> {
         load()
       })
     })
+  }
+
+  function updateViewToggle() {
+    const tableBtn = content.querySelector('#view-table') as HTMLElement | null
+    const kanbanBtn = content.querySelector('#view-kanban') as HTMLElement | null
+    if (tableBtn) {
+      tableBtn.className = `p-1.5 rounded-md transition-all duration-150 ${viewMode === 'table' ? 'bg-accent/15 text-accent shadow-sm' : 'text-muted hover:text-primary'}`
+      tableBtn.setAttribute('aria-pressed', String(viewMode === 'table'))
+    }
+    if (kanbanBtn) {
+      kanbanBtn.className = `p-1.5 rounded-md transition-all duration-150 ${viewMode === 'kanban' ? 'bg-accent/15 text-accent shadow-sm' : 'text-muted hover:text-primary'}`
+      kanbanBtn.setAttribute('aria-pressed', String(viewMode === 'kanban'))
+    }
+  }
+
+  async function load() {
+    const resp = await api.applications.list({
+      status: statusFilter,
+      search: searchQuery,
+      per_page: viewMode === 'kanban' ? 200 : 20,
+    }).catch(() => ({ data: [], total: 0, page: 1, per_page: 20, total_pages: 1 }))
+    const apps = resp.data
+
+    const appsContainer = content.querySelector('#apps-content')
+
+    if (!appsContainer) {
+      const viewToggle = `
+        <div class="flex items-center gap-0.5 rounded-lg border border-border p-0.5 bg-surface">
+          <button
+            id="view-table"
+            class="p-1.5 rounded-md transition-all duration-150 ${viewMode === 'table' ? 'bg-accent/15 text-accent shadow-sm' : 'text-muted hover:text-primary'}"
+            title="${t('list.view_table')}"
+            aria-pressed="${viewMode === 'table'}"
+          >${icons.tableView}</button>
+          <button
+            id="view-kanban"
+            class="p-1.5 rounded-md transition-all duration-150 ${viewMode === 'kanban' ? 'bg-accent/15 text-accent shadow-sm' : 'text-muted hover:text-primary'}"
+            title="${t('list.view_kanban')}"
+            aria-pressed="${viewMode === 'kanban'}"
+          >${icons.kanban}</button>
+        </div>
+      `
+
+      content.innerHTML = `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h1 class="text-2xl font-bold text-primary tracking-tight">${t('list.title')}</h1>
+          <div class="flex items-center gap-3">
+            ${viewToggle}
+            <a href="/applications/new" data-link class="btn-primary gap-1.5">${icons.plus} ${t('list.new')}</a>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3">
+          <div class="flex-1 relative">
+            <label for="search-input" class="sr-only">${t('common.search')}</label>
+            <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted/50 pointer-events-none" aria-hidden="true">${icons.search}</span>
+            <input
+              type="search"
+              id="search-input"
+              placeholder="${t('list.search')}"
+              class="input pl-10"
+              value="${searchQuery}"
+            />
+          </div>
+          <div class="sm:w-48">
+            <label for="status-filter" class="sr-only">${t('common.filter_status')}</label>
+            <select id="status-filter" class="select">
+              <option value="">${t('list.all_statuses')}</option>
+              ${ALL_STATUSES.map(s => `<option value="${s}" ${statusFilter === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div id="apps-content">
+          ${viewMode === 'kanban' ? renderKanban(apps) : renderTable(apps)}
+        </div>
+      `
+
+      content.querySelector('#view-table')?.addEventListener('click', () => {
+        viewMode = 'table'
+        localStorage.setItem('jc-view', 'table')
+        load()
+      })
+      content.querySelector('#view-kanban')?.addEventListener('click', () => {
+        viewMode = 'kanban'
+        localStorage.setItem('jc-view', 'kanban')
+        load()
+      })
+
+      content.querySelector('#search-input')?.addEventListener('input', (e) => {
+        searchQuery = (e.target as HTMLInputElement).value
+        if (debounceTimer) clearTimeout(debounceTimer)
+        debounceTimer = setTimeout(() => load(), 200)
+      })
+      content.querySelector('#status-filter')?.addEventListener('change', (e) => {
+        statusFilter = (e.target as HTMLSelectElement).value
+        load()
+      })
+    } else {
+      appsContainer.innerHTML = viewMode === 'kanban' ? renderKanban(apps) : renderTable(apps)
+      updateViewToggle()
+    }
+
+    attachCardListeners()
   }
 
   await load()

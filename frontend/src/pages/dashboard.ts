@@ -100,7 +100,7 @@ export async function DashboardPage(): Promise<HTMLElement> {
   const stats = await api.stats().catch(() => null) as Stats | null
 
   const content = document.createElement('div')
-  content.className = 'space-y-8 stagger'
+  content.className = 'space-y-10 stagger'
 
   const total = stats?.total ?? 0
   const overTime = stats?.over_time ?? []
@@ -119,23 +119,59 @@ export async function DashboardPage(): Promise<HTMLElement> {
     emerald: { dot: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' },
   }
 
+  const pipelineColors: Record<string, { bg: string; border: string; text: string; label: string; bar: string }> = {
+    Wishlist: { bg: 'bg-stone-100/70 dark:bg-stone-800/30', border: 'border-stone-400 dark:border-stone-500', text: 'text-stone-600 dark:text-stone-400', label: 'text-stone-500 dark:text-stone-500', bar: 'bg-stone-400 dark:bg-stone-500' },
+    Applied: { bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'border-sky-500 dark:border-sky-400', text: 'text-sky-700 dark:text-sky-400', label: 'text-sky-600/80 dark:text-sky-400/70', bar: 'bg-sky-500 dark:bg-sky-400' },
+    Screening: { bg: 'bg-amber-50 dark:bg-amber-500/10', border: 'border-amber-500 dark:border-amber-400', text: 'text-amber-700 dark:text-amber-400', label: 'text-amber-600/80 dark:text-amber-400/70', bar: 'bg-amber-500 dark:bg-amber-400' },
+    Interviewing: { bg: 'bg-orange-50 dark:bg-orange-500/10', border: 'border-orange-500 dark:border-orange-400', text: 'text-orange-700 dark:text-orange-400', label: 'text-orange-600/80 dark:text-orange-400/70', bar: 'bg-orange-500 dark:bg-orange-400' },
+    Offer: { bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'border-emerald-500 dark:border-emerald-400', text: 'text-emerald-700 dark:text-emerald-400', label: 'text-emerald-600/80 dark:text-emerald-400/70', bar: 'bg-emerald-500 dark:bg-emerald-400' },
+    Accepted: { bg: 'bg-teal-50 dark:bg-teal-500/10', border: 'border-teal-500 dark:border-teal-400', text: 'text-teal-700 dark:text-teal-400', label: 'text-teal-600/80 dark:text-teal-400/70', bar: 'bg-teal-500 dark:bg-teal-400' },
+    Rejected: { bg: 'bg-rose-50 dark:bg-rose-500/10', border: 'border-rose-400', text: 'text-rose-600 dark:text-rose-400', label: 'text-rose-500/80 dark:text-rose-400/70', bar: 'bg-rose-400' },
+    Withdrawn: { bg: 'bg-stone-100/70 dark:bg-stone-800/30', border: 'border-stone-400 dark:border-stone-500', text: 'text-stone-500 dark:text-stone-500', label: 'text-stone-400 dark:text-stone-500/70', bar: 'bg-stone-400 dark:bg-stone-500' },
+  }
+
   content.innerHTML = `
     <div>
       <h1 class="text-2xl font-bold text-primary tracking-tight">${t('dashboard.title')}</h1>
     </div>
 
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-8">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-10">
       ${statCards.map(({ label, value, color }) => {
         const c = colorMap[color]
         return `
         <div>
           <p class="text-4xl font-bold ${c.text} tabular-nums font-mono tracking-tight">${value}</p>
-          <p class="text-xs text-muted font-medium uppercase tracking-wider mt-2">${label}</p>
+          <p class="text-sm text-muted font-medium mt-2">${label}</p>
         </div>`
       }).join('')}
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+    <div>
+      <h2 class="text-sm font-semibold text-primary mb-5">${t('dashboard.pipeline')}</h2>
+      ${total > 0 ? `
+      <div class="flex rounded-full h-2.5 overflow-hidden bg-surface-2 mb-5" role="img" aria-label="${t('dashboard.pipeline')}">
+        ${ALL_STATUSES.map(s => {
+          const count = stats?.by_status?.[s] ?? 0
+          if (count === 0) return ''
+          const pct = (count / total) * 100
+          const c = pipelineColors[s]
+          return `<div class="${c.bar} transition-all duration-700" style="width:${pct.toFixed(1)}%"></div>`
+        }).join('')}
+      </div>` : ''}
+      <div class="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+        ${ALL_STATUSES.map(s => {
+          const count = stats?.by_status?.[s] ?? 0
+          const c = pipelineColors[s]
+          return `
+          <div class="rounded-xl text-center py-5 px-1 border-t-[3px] ${c.border} ${c.bg} transition-all duration-200 ${count === 0 ? 'opacity-30 hover:opacity-60' : 'hover:scale-[1.02]'}">
+            <div class="text-2xl font-bold ${c.text} tabular-nums font-mono leading-none">${count}</div>
+            <div class="text-xs ${c.label} mt-2 font-semibold">${statusLabel(s)}</div>
+          </div>`
+        }).join('')}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <div class="card lg:col-span-3">
         <h2 class="text-sm font-semibold text-primary mb-5">${t('dashboard.over_time')}</h2>
         ${barChart(overTime)}
@@ -146,20 +182,6 @@ export async function DashboardPage(): Promise<HTMLElement> {
         <div class="space-y-3">
           ${statusChart(stats?.by_status ?? {}, total)}
         </div>
-      </div>
-    </div>
-
-    <div>
-      <h2 class="text-sm font-semibold text-primary mb-4">${t('dashboard.pipeline')}</h2>
-      <div class="grid grid-cols-4 sm:grid-cols-8 gap-px bg-border rounded-lg overflow-hidden">
-        ${ALL_STATUSES.map(s => {
-          const count = stats?.by_status?.[s] ?? 0
-          return `
-          <div class="text-center py-4 bg-surface-1 hover:bg-surface-2/50 transition-colors">
-            <div class="text-xl font-bold text-primary tabular-nums font-mono">${count}</div>
-            <div class="text-[11px] text-muted mt-1.5 font-medium">${statusLabel(s)}</div>
-          </div>`
-        }).join('')}
       </div>
     </div>
 

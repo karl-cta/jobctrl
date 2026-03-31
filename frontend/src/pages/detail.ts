@@ -293,7 +293,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     ALL_STATUSES.forEach(s => {
       const isCurrent = s === app!.status
       const item = document.createElement('button')
-      item.className = `w-full text-left px-3 py-2 text-sm rounded-lg mx-0 hover:bg-surface-2 transition-colors flex items-center gap-2.5 ${isCurrent ? 'font-semibold text-accent' : 'text-primary'}`
+      item.className = `w-full text-left px-3 py-2 text-sm rounded-lg mx-0 hover:bg-surface-2 focus:bg-surface-2 focus:outline-none transition-colors flex items-center gap-2.5 ${isCurrent ? 'font-semibold text-accent' : 'text-primary'}`
       item.setAttribute('role', 'menuitem')
       item.innerHTML = `
         <span class="w-2 h-2 rounded-full ${statusDotColors[s] || 'bg-accent'} shrink-0"></span>
@@ -511,7 +511,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Interviews tab
   const interviewsPanel = document.createElement('div')
-  interviewsPanel.className = 'p-5'
+  interviewsPanel.className = 'p-5 space-y-3'
 
   const renderInterviews = (list: Interview[]) => {
     interviewsPanel.innerHTML = ''
@@ -616,7 +616,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Contacts tab
   const contactsPanel = document.createElement('div')
-  contactsPanel.className = 'p-5'
+  contactsPanel.className = 'p-5 space-y-3'
 
   const renderContacts = (list: Contact[]) => {
     contactsPanel.innerHTML = ''
@@ -628,7 +628,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       const overlay = openModal({ title: t('detail.contact_add_title'), content: el })
       el.querySelector('[data-save]')?.addEventListener('click', async () => {
         const data = getData()
-        if (!data) { toast(t('detail.contact_name') + ' required', 'error'); return }
+        if (!data) { toast(t('form.field_required'), 'error'); return }
         try {
           const created = await api.contacts.create(id, data)
           list.push(created)
@@ -677,7 +677,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         const overlay = openModal({ title: t('detail.contact_edit_title'), content: el })
         el.querySelector('[data-save]')?.addEventListener('click', async () => {
           const data = getData()
-          if (!data) { toast(t('detail.contact_name') + ' required', 'error'); return }
+          if (!data) { toast(t('form.field_required'), 'error'); return }
           try {
             const updated = await api.contacts.update(c.id, data)
             Object.assign(c, updated)
@@ -722,7 +722,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Timeline tab
   const timelinePanel = document.createElement('div')
-  timelinePanel.className = 'p-5'
+  timelinePanel.className = 'p-5 space-y-3'
   if (!app.timeline_events?.length) {
     timelinePanel.innerHTML = `<p class="text-sm text-muted/60">${t('detail.no_timeline')}</p>`
   } else {

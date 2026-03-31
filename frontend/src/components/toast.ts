@@ -6,6 +6,12 @@ const typeStyles: Record<ToastType, string> = {
   info: 'border-border bg-surface-1 text-primary/80',
 }
 
+const typeIcons: Record<ToastType, string> = {
+  success: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5 shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="9.5" stroke-width="1.5" opacity="0.15"/><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 12.5l3 3 6-8" pathLength="1" class="check-draw"/></svg>`,
+  error: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 shrink-0" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>`,
+  info: '',
+}
+
 let container: HTMLElement | null = null
 
 function getContainer(): HTMLElement {
@@ -20,23 +26,32 @@ function getContainer(): HTMLElement {
 
 export function toast(message: string, type: ToastType = 'info', durationMs = 4000) {
   const el = document.createElement('div')
-  el.className = `border rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 ${typeStyles[type]}`
+  el.className = `border rounded-xl px-4 py-3 text-sm font-medium flex items-center gap-2.5 ${typeStyles[type]}`
   el.style.boxShadow = 'var(--shadow-elevated)'
   el.setAttribute('role', type === 'error' ? 'alert' : 'status')
-  el.textContent = message
+
+  const icon = typeIcons[type]
+  if (icon) {
+    el.insertAdjacentHTML('beforeend', icon)
+  }
+
+  const textSpan = document.createElement('span')
+  textSpan.textContent = message
+  el.appendChild(textSpan)
 
   el.style.opacity = '0'
-  el.style.transform = 'translateY(8px)'
+  el.style.transform = 'translateY(8px) scale(0.96)'
   getContainer().appendChild(el)
 
   requestAnimationFrame(() => {
+    el.style.transition = 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
     el.style.opacity = '1'
-    el.style.transform = 'translateY(0)'
+    el.style.transform = 'translateY(0) scale(1)'
   })
 
   setTimeout(() => {
     el.style.opacity = '0'
-    el.style.transform = 'translateY(8px)'
-    setTimeout(() => el.remove(), 200)
+    el.style.transform = 'translateY(8px) scale(0.96)'
+    setTimeout(() => el.remove(), 250)
   }, durationMs)
 }

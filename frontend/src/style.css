@@ -9,7 +9,7 @@
     --color-surface-2: 245 245 244;
     --color-surface-3: 231 229 228;
     --color-primary: 28 25 23;
-    --color-muted: 120 113 108;
+    --color-muted: 101 96 90;
     --color-border: 228 225 222;
     --color-accent: 3 105 161;
     --color-accent-hover: 2 132 199;
@@ -60,14 +60,15 @@
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface
            disabled:opacity-50 disabled:cursor-not-allowed;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .btn-primary {
     @apply btn bg-accent text-white hover:bg-accent-hover active:scale-[0.97];
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.12);
   }
 
   .btn-ghost {
@@ -99,7 +100,11 @@
 
   .select {
     @apply input appearance-none cursor-pointer pr-9 bg-[length:1.25rem] bg-[right_0.625rem_center] bg-no-repeat;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='%2378716c'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='%2365605a'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'/%3E%3C/svg%3E");
+  }
+
+  .dark .select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='%239c968e'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'/%3E%3C/svg%3E");
   }
 
   .label {
@@ -110,14 +115,30 @@
     @apply inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium;
   }
 
-  .accent-glow {
-    background: linear-gradient(135deg, rgb(var(--color-accent)) 0%, rgb(var(--color-accent-hover)) 100%);
-  }
 }
 
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.check-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: check-draw 0.35s cubic-bezier(0.33, 1, 0.68, 1) 0.15s forwards;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.input:focus {
+  box-shadow: 0 0 0 3px rgb(var(--color-accent) / 0.08);
 }
 
 .stagger > * {
@@ -132,6 +153,15 @@
 .stagger > :nth-child(6) { animation-delay: 300ms; }
 .stagger > :nth-child(7) { animation-delay: 360ms; }
 .stagger > :nth-child(8) { animation-delay: 420ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 [role="tabpanel"]:not([hidden]) {
   animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
