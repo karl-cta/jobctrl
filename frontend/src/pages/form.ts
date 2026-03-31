@@ -11,7 +11,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
   const isEdit = Boolean(id)
   const existing = id ? await api.applications.get(id).catch(() => null) : null
 
-  const v = (field: keyof Application) => esc((existing?.[field] as string | undefined) ?? '')
+  const v = (field: keyof Application) => esc(String(existing?.[field] ?? ''))
 
   const content = document.createElement('div')
   content.className = 'max-w-2xl space-y-6 stagger'
