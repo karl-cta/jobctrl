@@ -513,7 +513,11 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // — Metadata: clean typographic row, no boxes
   const details: Array<{ label: string; value: string; href?: string }> = []
-  if (app.contract_type) details.push({ label: t('detail.contract'), value: app.contract_type })
+  if (app.contract_type) {
+    let contractValue = app.contract_type as string
+    if (app.contract_type === 'CDD' && app.contract_duration) contractValue += ` (${app.contract_duration} mois)`
+    details.push({ label: t('detail.contract'), value: contractValue })
+  }
   if (app.work_mode) details.push({ label: t('detail.mode'), value: app.work_mode })
   if (app.salary) details.push({ label: t('detail.salary'), value: `${app.salary / 1000}k \u20ac` })
   if (app.applied_at) details.push({ label: t('detail.applied_at'), value: new Date(app.applied_at).toLocaleDateString(dateFmt) })

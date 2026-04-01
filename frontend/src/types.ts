@@ -26,6 +26,7 @@ export interface Application {
   job_url?: string
   job_description?: string
   contract_type: ContractType
+  contract_duration?: number
   work_mode: WorkMode
   location?: string
   salary?: number

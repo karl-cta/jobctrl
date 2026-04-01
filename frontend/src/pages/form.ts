@@ -78,6 +78,10 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
               ).join('')}
             </select>
           </div>
+          <div id="duration-field" class="${v('contract_type') === 'CDD' ? '' : 'hidden'}">
+            <label for="f-contract-duration" class="label">${t('form.contract_duration')}</label>
+            <input id="f-contract-duration" name="contract_duration" class="input" type="number" min="1" placeholder="${t('form.contract_duration_placeholder')}" value="${v('contract_duration')}" />
+          </div>
           <div>
             <label for="f-work-mode" class="label">${t('form.work_mode')}</label>
             <select id="f-work-mode" name="work_mode" class="select">
@@ -179,6 +183,19 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
 
   content.querySelector('#back-btn')?.addEventListener('click', () => window.history.back())
   content.querySelector('#cancel-btn')?.addEventListener('click', () => window.history.back())
+
+  // Show/hide duration field based on contract type
+  const contractSelect = content.querySelector('#f-contract-type') as HTMLSelectElement | null
+  const durationField = content.querySelector('#duration-field') as HTMLElement | null
+  if (contractSelect && durationField) {
+    contractSelect.addEventListener('change', () => {
+      durationField.classList.toggle('hidden', contractSelect.value !== 'CDD')
+      if (contractSelect.value !== 'CDD') {
+        const input = durationField.querySelector('input') as HTMLInputElement
+        if (input) input.value = ''
+      }
+    })
+  }
 
   // URL extraction
   const extractBtn = content.querySelector('#extract-btn') as HTMLButtonElement | null
@@ -339,6 +356,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       job_url: data.job_url || undefined,
       job_description: data.job_description || undefined,
       contract_type: data.contract_type as Application['contract_type'],
+      contract_duration: data.contract_duration ? Number(data.contract_duration) : undefined,
       work_mode: data.work_mode as Application['work_mode'],
       location: data.location || undefined,
       salary: data.salary ? Number(data.salary) : undefined,

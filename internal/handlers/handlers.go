@@ -144,7 +144,7 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 	sortDir := q.Get("dir")
 
 	query := `SELECT a.id, a.company_name, a.company_website, a.company_industry, a.company_size,
-		a.company_location, a.job_title, a.job_url, a.job_description, a.contract_type, a.work_mode,
+		a.company_location, a.job_title, a.job_url, a.job_description, a.contract_type, a.contract_duration, a.work_mode,
 		a.location, a.salary, a.salary_currency, a.status, a.applied_at, a.source,
 		a.notes, a.speech, a.rating, a.confidence, a.created_at, a.updated_at,
 		(SELECT COUNT(*) FROM interviews WHERE application_id = a.id) as interview_count,
@@ -213,7 +213,7 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(
 			&a.ID, &a.CompanyName, &a.CompanyWebsite, &a.CompanyIndustry, &a.CompanySize,
 			&a.CompanyLocation, &a.JobTitle, &a.JobURL, &a.JobDescription,
-			&a.ContractType, &a.WorkMode, &a.Location,
+			&a.ContractType, &a.ContractDuration, &a.WorkMode, &a.Location,
 			&a.Salary, &a.SalaryCurrency, &a.Status,
 			&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating, &a.Confidence,
 			&a.CreatedAt, &a.UpdatedAt,
@@ -249,7 +249,7 @@ func (h *Handler) GetApplication(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var a models.Application
 	row := h.db.QueryRowContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
-		company_size, company_location, job_title, job_url, job_description, contract_type, work_mode,
+		company_size, company_location, job_title, job_url, job_description, contract_type, contract_duration, work_mode,
 		location, salary, salary_currency, status, applied_at, source,
 		notes, speech, rating, confidence, created_at, updated_at FROM applications WHERE id = ?`, id)
 	if err := scanApplication(row, &a); err == sql.ErrNoRows {
@@ -308,11 +308,11 @@ func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 
 	_, err := h.db.ExecContext(r.Context(), `INSERT INTO applications
 		(id, company_name, company_website, company_industry, company_size, company_location,
-		job_title, job_url, job_description, contract_type, work_mode, location,
+		job_title, job_url, job_description, contract_type, contract_duration, work_mode, location,
 		salary, salary_currency, status, applied_at, source, notes, speech, rating, confidence,
-		created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		a.ID, a.CompanyName, a.CompanyWebsite, a.CompanyIndustry, a.CompanySize, a.CompanyLocation,
-		a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.WorkMode, a.Location,
+		a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.ContractDuration, a.WorkMode, a.Location,
 		a.Salary, a.SalaryCurrency, a.Status, appliedAtStr, a.Source, a.Notes, a.Speech, a.Rating, a.Confidence,
 		sqliteTime(a.CreatedAt), sqliteTime(a.UpdatedAt),
 	)
@@ -363,11 +363,11 @@ func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 
 	_, err = h.db.ExecContext(r.Context(), `UPDATE applications SET
 		company_name=?, company_website=?, company_industry=?, company_size=?, company_location=?,
-		job_title=?, job_url=?, job_description=?, contract_type=?, work_mode=?, location=?,
+		job_title=?, job_url=?, job_description=?, contract_type=?, contract_duration=?, work_mode=?, location=?,
 		salary=?, salary_currency=?, status=?, applied_at=?, source=?,
 		notes=?, speech=?, rating=?, confidence=?, updated_at=? WHERE id=?`,
 		a.CompanyName, a.CompanyWebsite, a.CompanyIndustry, a.CompanySize, a.CompanyLocation,
-		a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.WorkMode, a.Location,
+		a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.ContractDuration, a.WorkMode, a.Location,
 		a.Salary, a.SalaryCurrency, a.Status, appliedAtStr, a.Source,
 		a.Notes, a.Speech, a.Rating, a.Confidence, sqliteTime(a.UpdatedAt), id,
 	)
@@ -745,7 +745,7 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.QueryContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
-		company_size, company_location, job_title, job_url, job_description, contract_type, work_mode,
+		company_size, company_location, job_title, job_url, job_description, contract_type, contract_duration, work_mode,
 		location, salary, salary_currency, status, applied_at, source,
 		notes, speech, rating, confidence, created_at, updated_at FROM applications ORDER BY created_at`)
 	if err != nil {
@@ -783,7 +783,7 @@ func scanApplication(s scanner, a *models.Application) error {
 	return s.Scan(
 		&a.ID, &a.CompanyName, &a.CompanyWebsite, &a.CompanyIndustry, &a.CompanySize,
 		&a.CompanyLocation, &a.JobTitle, &a.JobURL, &a.JobDescription,
-		&a.ContractType, &a.WorkMode, &a.Location,
+		&a.ContractType, &a.ContractDuration, &a.WorkMode, &a.Location,
 		&a.Salary, &a.SalaryCurrency, &a.Status,
 		&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating, &a.Confidence,
 		&a.CreatedAt, &a.UpdatedAt,

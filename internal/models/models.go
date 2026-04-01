@@ -64,8 +64,9 @@ type Application struct {
 	JobTitle        string            `json:"job_title"`
 	JobURL          *string           `json:"job_url"`
 	JobDescription  *string           `json:"job_description"`
-	ContractType    ContractType      `json:"contract_type"`
-	WorkMode        WorkMode          `json:"work_mode"`
+	ContractType     ContractType      `json:"contract_type"`
+	ContractDuration *int             `json:"contract_duration"`
+	WorkMode         WorkMode         `json:"work_mode"`
 	Location        *string           `json:"location"`
 	Salary          *int              `json:"salary"`
 	SalaryCurrency  string            `json:"salary_currency"`
