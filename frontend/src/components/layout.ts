@@ -46,7 +46,7 @@ export function createLayout(content: HTMLElement): HTMLElement {
       </div>
     </header>
 
-    <div id="mobile-nav" class="sm:hidden hidden border-b border-border bg-surface-1" role="navigation" aria-label="${t('nav.mobile_menu')}">
+    <div id="mobile-nav" class="sm:hidden hidden border-b border-border bg-surface-1 sticky top-14 z-30" role="navigation" aria-label="${t('nav.mobile_menu')}">
       <div class="max-w-6xl mx-auto px-5 py-2.5 flex gap-1">
         ${navLink('/', t('nav.dashboard'))}
         ${navLink('/applications', t('nav.applications'))}
