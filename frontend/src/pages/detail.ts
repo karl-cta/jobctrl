@@ -419,12 +419,11 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   // — Title block
   const titleGroup = document.createElement('div')
   titleGroup.innerHTML = `
-    <div class="flex items-center gap-3">
-      ${app.company_website && domainFromUrl(app.company_website)
-        ? `<img src="${faviconUrl(domainFromUrl(app.company_website)!)}" width="28" height="28" alt="" class="source-favicon rounded shrink-0" onerror="this.style.display='none'" />`
-        : ''}
-      <h1 class="text-3xl font-bold text-primary tracking-tighter">${esc(app.company_name)}</h1>
-    </div>
+    <h1 class="text-3xl font-bold text-primary tracking-tighter">${
+      app.company_website && domainFromUrl(app.company_website)
+        ? `<img src="${faviconUrl(domainFromUrl(app.company_website)!, 64)}" alt="" class="inline-block w-7 h-7 rounded -mt-1 mr-2" onerror="this.style.display='none'" />`
+        : ''
+    }${esc(app.company_name)}</h1>
     <p class="text-lg text-muted mt-1">${esc(app.job_title)}</p>
     ${app.location ? `<p class="text-muted/60 text-sm flex items-center gap-1.5 mt-2"><span aria-hidden="true">${icons.pin}</span> ${esc(app.location)}</p>` : ''}
   `
