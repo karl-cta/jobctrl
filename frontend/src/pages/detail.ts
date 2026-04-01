@@ -6,6 +6,7 @@ import { toast, celebrate } from '../components/toast'
 import { t, getDateLocale, translateTimelineEvent } from '../i18n'
 import { icons } from '../icons'
 import { esc, sanitizeUrl, safeHostname } from '../sanitize'
+import { faviconUrl, getSourceDomain } from '../job-boards'
 import {
   statusLabel,
   STATUS_COLORS,
@@ -512,7 +513,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   content.appendChild(header)
 
   // — Metadata: clean typographic row, no boxes
-  const details: Array<{ label: string; value: string; href?: string }> = []
+  const details: Array<{ label: string; value: string; href?: string; iconHtml?: string }> = []
   if (app.contract_type) {
     let contractValue = app.contract_type as string
     if (app.contract_type === 'CDD' && app.contract_duration) contractValue += ` (${app.contract_duration} mois)`
@@ -521,7 +522,13 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   if (app.work_mode) details.push({ label: t('detail.mode'), value: app.work_mode })
   if (app.salary) details.push({ label: t('detail.salary'), value: `${app.salary / 1000}k \u20ac` })
   if (app.applied_at) details.push({ label: t('detail.applied_at'), value: new Date(app.applied_at).toLocaleDateString(dateFmt) })
-  if (app.source) details.push({ label: t('detail.source'), value: app.source })
+  if (app.source) {
+    const srcDomain = getSourceDomain(app.source)
+    const srcIcon = srcDomain
+      ? `<img src="${faviconUrl(srcDomain)}" width="16" height="16" alt="" class="source-favicon" onerror="this.style.display='none'" />`
+      : ''
+    details.push({ label: t('detail.source'), value: app.source, iconHtml: srcIcon })
+  }
   if (app.job_url && sanitizeUrl(app.job_url)) details.push({ label: t('detail.job_link'), value: safeHostname(app.job_url), href: sanitizeUrl(app.job_url) })
 
   if (details.length) {
@@ -529,11 +536,12 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     detailsRow.className = 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-y-5 gap-x-6 py-6 border-t border-b border-border/50'
     details.forEach(d => {
       const item = document.createElement('div')
+      const icon = d.iconHtml || ''
       item.innerHTML = d.href
         ? `<span class="block text-xs text-muted/60 uppercase tracking-wider font-medium mb-1">${esc(d.label)}</span>
            <a href="${esc(d.href)}" target="_blank" rel="noopener noreferrer" class="text-sm text-accent hover:text-accent-hover font-medium transition-colors inline-flex items-center gap-1">${esc(d.value)}</a>`
         : `<span class="block text-xs text-muted/60 uppercase tracking-wider font-medium mb-1">${esc(d.label)}</span>
-           <span class="block text-sm text-primary font-medium">${esc(d.value)}</span>`
+           <span class="flex items-center gap-2 text-sm text-primary font-medium">${icon}${esc(d.value)}</span>`
       detailsRow.appendChild(item)
     })
     content.appendChild(detailsRow)

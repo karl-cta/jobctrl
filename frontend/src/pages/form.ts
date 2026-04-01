@@ -6,6 +6,7 @@ import { icons } from '../icons'
 import { toast } from '../components/toast'
 import { esc } from '../sanitize'
 import { ALL_STATUSES, statusLabel, type Application } from '../types'
+import { setupSourceAutocomplete } from '../components/source-autocomplete'
 
 export async function FormPage(id?: string): Promise<HTMLElement> {
   const isEdit = Boolean(id)
@@ -183,6 +184,9 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
 
   content.querySelector('#back-btn')?.addEventListener('click', () => window.history.back())
   content.querySelector('#cancel-btn')?.addEventListener('click', () => window.history.back())
+
+  const sourceInput = content.querySelector('#f-source') as HTMLInputElement | null
+  if (sourceInput) setupSourceAutocomplete(sourceInput, () => api.sources())
 
   // Show/hide duration field based on contract type
   const contractSelect = content.querySelector('#f-contract-type') as HTMLSelectElement | null

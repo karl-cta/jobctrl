@@ -743,6 +743,25 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+func (h *Handler) ListSources(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.db.QueryContext(r.Context(),
+		`SELECT DISTINCT source FROM applications WHERE source IS NOT NULL AND source != '' ORDER BY source`)
+	if err != nil {
+		writeJSON(w, http.StatusOK, []string{})
+		return
+	}
+	defer rows.Close()
+
+	sources := make([]string, 0)
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err == nil {
+			sources = append(sources, s)
+		}
+	}
+	writeJSON(w, http.StatusOK, sources)
+}
+
 func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.QueryContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
 		company_size, company_location, job_title, job_url, job_description, contract_type, contract_duration, work_mode,

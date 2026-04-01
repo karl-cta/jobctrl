@@ -5,6 +5,7 @@ import { t, getDateLocale } from '../i18n'
 import { icons } from '../icons'
 import { esc } from '../sanitize'
 import { statusLabel, STATUS_COLORS, ALL_STATUSES, type Application, type ApplicationStatus } from '../types'
+import { faviconUrl, domainFromUrl } from '../job-boards'
 
 const STATUS_BORDER: Record<string, string> = {
   Wishlist: 'border-l-stone-400 dark:border-l-stone-500',
@@ -33,6 +34,12 @@ const CONF_FILL: Record<number, string> = {
   2: 'bg-amber-500 dark:bg-amber-400',
   3: 'bg-emerald-500 dark:bg-emerald-400',
   4: 'bg-teal-500 dark:bg-teal-400',
+}
+
+function companyFavicon(app: Application): string {
+  const domain = app.company_website ? domainFromUrl(app.company_website) : null
+  if (!domain) return ''
+  return `<img src="${faviconUrl(domain)}" width="20" height="20" alt="" class="source-favicon rounded shrink-0" onerror="this.style.display='none'" />`
 }
 
 function confidenceMeter(level: number): string {
@@ -72,6 +79,7 @@ export async function ListPage(): Promise<HTMLElement> {
           role="link"
           aria-label="${esc(app.company_name)} — ${esc(app.job_title)}"
         >
+          ${companyFavicon(app)}
           <div class="flex-1 min-w-0">
             <div class="sm:flex sm:items-center sm:gap-2 mb-1.5">
               <span class="font-semibold text-primary truncate block">${esc(app.company_name)}</span>
@@ -129,7 +137,7 @@ export async function ListPage(): Promise<HTMLElement> {
                       role="link"
                       aria-label="${esc(app.company_name)} — ${esc(app.job_title)}"
                     >
-                      <div class="font-semibold text-primary text-sm truncate mb-0.5">${esc(app.company_name)}</div>
+                      <div class="flex items-center gap-2 mb-0.5">${companyFavicon(app)}<span class="font-semibold text-primary text-sm truncate">${esc(app.company_name)}</span></div>
                       <div class="text-muted text-xs truncate mb-2.5">${esc(app.job_title)}</div>
                       <div class="flex items-center justify-between gap-1">
                         <span class="text-xs text-muted/70 tabular-nums font-medium">${app.salary ? `${app.salary / 1000}k \u20ac` : ''}</span>

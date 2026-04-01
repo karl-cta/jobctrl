@@ -4,6 +4,7 @@ import { t, tp } from '../i18n'
 import { esc } from '../sanitize'
 import { statusLabel, statusLabelCount, ALL_STATUSES } from '../types'
 import type { Stats } from '../types'
+import { faviconUrl, getSourceDomain } from '../job-boards'
 
 function barChart(data: Array<{ period: string; count: number }>): string {
   if (!data.length) {
@@ -219,12 +220,17 @@ export async function DashboardPage(): Promise<HTMLElement> {
     <div class="card">
       <h2 class="text-sm font-semibold text-primary mb-5">${t('dashboard.top_sources')}</h2>
       <div class="space-y-0 divide-y divide-border/60">
-        ${stats.top_sources.map(s => `
+        ${stats.top_sources.map(s => {
+          const domain = getSourceDomain(s.source)
+          const favicon = domain
+            ? `<img src="${faviconUrl(domain)}" width="16" height="16" alt="" class="source-favicon" onerror="this.style.display='none'" />`
+            : ''
+          return `
           <div class="flex items-center justify-between py-2.5 group">
-            <span class="text-sm text-primary/80 group-hover:text-primary transition-colors">${esc(s.source)}</span>
+            <span class="text-sm text-primary/80 group-hover:text-primary transition-colors flex items-center gap-2.5">${favicon}${esc(s.source)}</span>
             <span class="text-sm font-semibold text-primary tabular-nums">${s.count}</span>
-          </div>
-        `).join('')}
+          </div>`
+        }).join('')}
       </div>
     </div>
     ` : ''}

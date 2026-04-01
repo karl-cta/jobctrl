@@ -52,6 +52,7 @@ export const api = {
   },
   extract: (url: string) =>
     request<Partial<Application>>('/extract', { method: 'POST', body: JSON.stringify({ url }) }),
+  sources: () => request<string[]>('/sources'),
   stats: () => request<Stats>('/stats'),
   export: () => request<unknown>('/export'),
 }
