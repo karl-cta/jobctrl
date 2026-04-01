@@ -36,10 +36,10 @@ const CONF_FILL: Record<number, string> = {
   4: 'bg-teal-500 dark:bg-teal-400',
 }
 
-function companyFavicon(app: Application): string {
+function companyFavicon(app: Application, cls = 'w-5 h-5'): string {
   const domain = app.company_website ? domainFromUrl(app.company_website) : null
   if (!domain) return ''
-  return `<img src="${faviconUrl(domain)}" width="20" height="20" alt="" class="source-favicon rounded shrink-0" onerror="this.style.display='none'" />`
+  return `<img src="${faviconUrl(domain, 64)}" alt="" class="source-favicon rounded shrink-0 ${cls}" onerror="this.style.display='none'" />`
 }
 
 function confidenceMeter(level: number): string {
@@ -53,7 +53,9 @@ function confidenceMeter(level: number): string {
 }
 
 export async function ListPage(): Promise<HTMLElement> {
-  let statusFilter = new URLSearchParams(window.location.search).get('status') || ''
+  const urlParams = new URLSearchParams(window.location.search)
+  let statusFilter = urlParams.get('status') || ''
+  let sourceFilter = urlParams.get('source') || ''
   let searchQuery = ''
   let viewMode: 'table' | 'kanban' = (localStorage.getItem('jc-view') as 'table' | 'kanban') || 'table'
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -79,12 +81,11 @@ export async function ListPage(): Promise<HTMLElement> {
           role="link"
           aria-label="${esc(app.company_name)} — ${esc(app.job_title)}"
         >
-          ${companyFavicon(app)}
+          ${companyFavicon(app, 'w-5 h-5 sm:w-7 sm:h-7')}
           <div class="flex-1 min-w-0">
-            <div class="sm:flex sm:items-center sm:gap-2 mb-1.5">
-              <span class="font-semibold text-primary truncate block">${esc(app.company_name)}</span>
-              <span class="text-border hidden sm:inline shrink-0">&middot;</span>
-              <span class="text-muted text-sm truncate block">${esc(app.job_title)}</span>
+            <div class="mb-1.5">
+              <span class="font-semibold text-primary block break-words sm:truncate">${esc(app.company_name)}</span>
+              <span class="text-muted text-sm block break-words sm:truncate">${esc(app.job_title)}</span>
             </div>
             <div class="flex items-center gap-2.5 flex-wrap">
               <span class="text-xs font-semibold uppercase tracking-wide ${STATUS_TEXT[app.status] || 'text-muted'}">${statusLabel(app.status as ApplicationStatus)}</span>

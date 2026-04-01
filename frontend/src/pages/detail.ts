@@ -6,7 +6,7 @@ import { toast, celebrate } from '../components/toast'
 import { t, getDateLocale, translateTimelineEvent } from '../i18n'
 import { icons } from '../icons'
 import { esc, sanitizeUrl, safeHostname } from '../sanitize'
-import { faviconUrl, getSourceDomain } from '../job-boards'
+import { faviconUrl, getSourceDomain, domainFromUrl } from '../job-boards'
 import {
   statusLabel,
   STATUS_COLORS,
@@ -419,7 +419,12 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   // — Title block
   const titleGroup = document.createElement('div')
   titleGroup.innerHTML = `
-    <h1 class="text-3xl font-bold text-primary tracking-tighter">${esc(app.company_name)}</h1>
+    <div class="flex items-center gap-3">
+      ${app.company_website && domainFromUrl(app.company_website)
+        ? `<img src="${faviconUrl(domainFromUrl(app.company_website)!)}" width="28" height="28" alt="" class="source-favicon rounded shrink-0" onerror="this.style.display='none'" />`
+        : ''}
+      <h1 class="text-3xl font-bold text-primary tracking-tighter">${esc(app.company_name)}</h1>
+    </div>
     <p class="text-lg text-muted mt-1">${esc(app.job_title)}</p>
     ${app.location ? `<p class="text-muted/60 text-sm flex items-center gap-1.5 mt-2"><span aria-hidden="true">${icons.pin}</span> ${esc(app.location)}</p>` : ''}
   `
