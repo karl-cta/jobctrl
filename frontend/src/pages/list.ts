@@ -81,10 +81,9 @@ export async function ListPage(): Promise<HTMLElement> {
           role="link"
           aria-label="${esc(app.company_name)} — ${esc(app.job_title)}"
         >
-          ${companyFavicon(app, 'w-5 h-5 sm:w-7 sm:h-7')}
           <div class="flex-1 min-w-0">
             <div class="mb-1.5">
-              <span class="font-semibold text-primary block break-words sm:truncate">${esc(app.company_name)}</span>
+              <span class="font-semibold text-primary block break-words sm:truncate">${companyFavicon(app, 'w-5 h-5 sm:w-6 sm:h-6 inline-block -mt-0.5 mr-1.5')}${esc(app.company_name)}</span>
               <span class="text-muted text-sm block break-words sm:truncate">${esc(app.job_title)}</span>
             </div>
             <div class="flex items-center gap-2.5 flex-wrap">
