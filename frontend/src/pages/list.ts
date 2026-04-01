@@ -73,10 +73,10 @@ export async function ListPage(): Promise<HTMLElement> {
           aria-label="${esc(app.company_name)} — ${esc(app.job_title)}"
         >
           <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-1.5">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:gap-2 mb-1.5">
               <span class="font-semibold text-primary truncate">${esc(app.company_name)}</span>
-              <span class="text-border">&middot;</span>
-              <span class="text-muted truncate text-sm">${esc(app.job_title)}</span>
+              <span class="text-border hidden sm:inline">&middot;</span>
+              <span class="text-muted text-sm truncate">${esc(app.job_title)}</span>
             </div>
             <div class="flex items-center gap-2.5 flex-wrap">
               <span class="text-xs font-semibold uppercase tracking-wide ${STATUS_TEXT[app.status] || 'text-muted'}">${statusLabel(app.status as ApplicationStatus)}</span>

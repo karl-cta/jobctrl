@@ -239,6 +239,13 @@
 .stagger > :nth-child(7) { animation-delay: 360ms; }
 .stagger > :nth-child(8) { animation-delay: 420ms; }
 
+/* Prevent iOS auto-zoom on input focus (triggers at font-size < 16px) */
+@media screen and (max-width: 767px) {
+  .input, .select, textarea {
+    font-size: 16px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
