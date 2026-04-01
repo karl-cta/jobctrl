@@ -373,6 +373,16 @@
   flex-shrink: 0;
 }
 
+/* Content refresh transition */
+#apps-content {
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+
+#apps-content.content-swap {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
 /* Source filter chip */
 @keyframes chip-in {
   from { opacity: 0; transform: scale(0.92); }

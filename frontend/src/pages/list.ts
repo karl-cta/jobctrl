@@ -1,7 +1,7 @@
 import { api } from '../api'
 import { createLayout } from '../components/layout'
 import { navigate } from '../router'
-import { t, getDateLocale } from '../i18n'
+import { t, tp, getDateLocale } from '../i18n'
 import { icons } from '../icons'
 import { esc } from '../sanitize'
 import { statusLabel, STATUS_COLORS, ALL_STATUSES, type Application, type ApplicationStatus } from '../types'
@@ -57,14 +57,24 @@ export async function ListPage(): Promise<HTMLElement> {
   let statusFilter = urlParams.get('status') || ''
   let sourceFilter = urlParams.get('source') || ''
   let searchQuery = ''
+  let sortValue = localStorage.getItem('jc-sort') || 'created_at:desc'
   let viewMode: 'table' | 'kanban' = (localStorage.getItem('jc-view') as 'table' | 'kanban') || 'table'
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
   const content = document.createElement('div')
   content.className = 'space-y-6 stagger'
 
-  function renderTable(apps: Application[]): string {
-    if (apps.length === 0) return `
+  const hasActiveFilters = () => !!(statusFilter || sourceFilter || searchQuery)
+
+  function renderEmpty(): string {
+    if (hasActiveFilters()) return `
+      <div class="text-center py-24">
+        <div class="text-muted/15 mb-6 flex justify-center">${icons.search}</div>
+        <p class="text-primary text-lg font-semibold mb-2">${t('list.empty_filtered')}</p>
+        <p class="text-muted text-sm">${t('list.empty_filtered_hint')}</p>
+      </div>
+    `
+    return `
       <div class="text-center py-24">
         <div class="text-muted/15 mb-6 flex justify-center">${icons.briefcaseLg}</div>
         <p class="text-primary text-lg font-semibold mb-2">${t('list.empty')}</p>
@@ -72,6 +82,10 @@ export async function ListPage(): Promise<HTMLElement> {
         <a href="/applications/new" data-link class="btn-primary gap-1.5">${icons.plus} ${t('list.add_first')}</a>
       </div>
     `
+  }
+
+  function renderTable(apps: Application[]): string {
+    if (apps.length === 0) return renderEmpty()
     return `<div class="space-y-2">
       ${apps.map(app => `
         <div
@@ -199,10 +213,13 @@ export async function ListPage(): Promise<HTMLElement> {
   }
 
   async function load() {
+    const [sortField, sortDir] = sortValue.split(':')
     const resp = await api.applications.list({
       status: statusFilter,
       source: sourceFilter,
       search: searchQuery,
+      sort: sortField,
+      dir: sortDir,
       per_page: viewMode === 'kanban' ? 200 : 20,
     }).catch(() => ({ data: [], total: 0, page: 1, per_page: 20, total_pages: 1 }))
     const apps = resp.data
@@ -248,12 +265,28 @@ export async function ListPage(): Promise<HTMLElement> {
               value="${searchQuery}"
             />
           </div>
-          <div class="sm:w-48">
-            <label for="status-filter" class="sr-only">${t('common.filter_status')}</label>
-            <select id="status-filter" class="select">
-              <option value="">${t('list.all_statuses')}</option>
-              ${ALL_STATUSES.map(s => `<option value="${s}" ${statusFilter === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
-            </select>
+          <div class="flex gap-3 sm:contents">
+            <div class="flex-1 sm:flex-none sm:w-48">
+              <label for="status-filter" class="sr-only">${t('common.filter_status')}</label>
+              <select id="status-filter" class="select">
+                <option value="">${t('list.all_statuses')}</option>
+                ${ALL_STATUSES.map(s => `<option value="${s}" ${statusFilter === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="flex-1 sm:flex-none sm:w-48">
+              <label for="sort-select" class="sr-only">${t('list.sort')}</label>
+              <select id="sort-select" class="select">
+                <option value="created_at:desc" ${sortValue === 'created_at:desc' ? 'selected' : ''}>${t('list.sort_date_desc')}</option>
+                <option value="created_at:asc" ${sortValue === 'created_at:asc' ? 'selected' : ''}>${t('list.sort_date_asc')}</option>
+                <option value="company_name:asc" ${sortValue === 'company_name:asc' ? 'selected' : ''}>${t('list.sort_company_az')}</option>
+                <option value="company_name:desc" ${sortValue === 'company_name:desc' ? 'selected' : ''}>${t('list.sort_company_za')}</option>
+                <option value="status:asc" ${sortValue === 'status:asc' ? 'selected' : ''}>${t('list.sort_status')}</option>
+                <option value="confidence:desc" ${sortValue === 'confidence:desc' ? 'selected' : ''}>${t('list.sort_confidence_desc')}</option>
+                <option value="confidence:asc" ${sortValue === 'confidence:asc' ? 'selected' : ''}>${t('list.sort_confidence_asc')}</option>
+                <option value="rating:desc" ${sortValue === 'rating:desc' ? 'selected' : ''}>${t('list.sort_rating_desc')}</option>
+                <option value="rating:asc" ${sortValue === 'rating:asc' ? 'selected' : ''}>${t('list.sort_rating_asc')}</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -267,6 +300,10 @@ export async function ListPage(): Promise<HTMLElement> {
           </span>
         </div>
         ` : ''}
+
+        <div class="flex items-center justify-between">
+          <span id="result-count" class="text-xs text-muted/60 tabular-nums">${resp.total} ${tp('list.result_count', resp.total)}</span>
+        </div>
 
         <div id="apps-content">
           ${viewMode === 'kanban' ? renderKanban(apps) : renderTable(apps)}
@@ -293,6 +330,11 @@ export async function ListPage(): Promise<HTMLElement> {
         statusFilter = (e.target as HTMLSelectElement).value
         load()
       })
+      content.querySelector('#sort-select')?.addEventListener('change', (e) => {
+        sortValue = (e.target as HTMLSelectElement).value
+        localStorage.setItem('jc-sort', sortValue)
+        load()
+      })
       content.querySelector('#clear-source')?.addEventListener('click', () => {
         sourceFilter = ''
         window.history.replaceState({}, '', '/applications')
@@ -304,7 +346,13 @@ export async function ListPage(): Promise<HTMLElement> {
         load()
       })
     } else {
-      appsContainer.innerHTML = viewMode === 'kanban' ? renderKanban(apps) : renderTable(apps)
+      const el = appsContainer as HTMLElement
+      el.classList.add('content-swap')
+      const countEl = content.querySelector('#result-count')
+      if (countEl) countEl.textContent = `${resp.total} ${tp('list.result_count', resp.total)}`
+      await new Promise(r => setTimeout(r, 120))
+      el.innerHTML = viewMode === 'kanban' ? renderKanban(apps) : renderTable(apps)
+      el.classList.remove('content-swap')
       updateViewToggle()
     }
 

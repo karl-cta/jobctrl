@@ -170,7 +170,7 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 	allowed := map[string]bool{
 		"created_at": true, "updated_at": true, "company_name": true,
 		"job_title": true, "status": true, "applied_at": true,
-		"salary": true, "rating": true,
+		"salary": true, "rating": true, "confidence": true,
 	}
 	if !allowed[sortBy] {
 		sortBy = "created_at"

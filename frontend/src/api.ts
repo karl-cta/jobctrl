@@ -17,7 +17,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   applications: {
-    list: (params?: { status?: string; source?: string; search?: string; sort?: string; page?: number; per_page?: number }) => {
+    list: (params?: { status?: string; source?: string; search?: string; sort?: string; dir?: string; page?: number; per_page?: number }) => {
       const q = new URLSearchParams()
       if (params) {
         for (const [k, v] of Object.entries(params)) {
