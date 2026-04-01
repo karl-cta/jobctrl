@@ -202,6 +202,7 @@ export async function ListPage(): Promise<HTMLElement> {
   async function load() {
     const resp = await api.applications.list({
       status: statusFilter,
+      source: sourceFilter,
       search: searchQuery,
       per_page: viewMode === 'kanban' ? 200 : 20,
     }).catch(() => ({ data: [], total: 0, page: 1, per_page: 20, total_pages: 1 }))
@@ -257,6 +258,17 @@ export async function ListPage(): Promise<HTMLElement> {
           </div>
         </div>
 
+        ${sourceFilter ? `
+        <div id="source-chip" class="flex items-center gap-2 chip-enter">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
+            ${t('list.source_filter')}: ${esc(sourceFilter)}
+            <button id="clear-source" class="hover:bg-accent/20 rounded-full p-0.5 transition-colors" title="${t('list.clear_source')}">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </span>
+        </div>
+        ` : ''}
+
         <div id="apps-content">
           ${viewMode === 'kanban' ? renderKanban(apps) : renderTable(apps)}
         </div>
@@ -280,6 +292,16 @@ export async function ListPage(): Promise<HTMLElement> {
       })
       content.querySelector('#status-filter')?.addEventListener('change', (e) => {
         statusFilter = (e.target as HTMLSelectElement).value
+        load()
+      })
+      content.querySelector('#clear-source')?.addEventListener('click', () => {
+        sourceFilter = ''
+        window.history.replaceState({}, '', '/applications')
+        const chip = content.querySelector('#source-chip')
+        if (chip) {
+          chip.classList.replace('chip-enter', 'chip-exit')
+          chip.addEventListener('animationend', () => chip.remove(), { once: true })
+        }
         load()
       })
     } else {

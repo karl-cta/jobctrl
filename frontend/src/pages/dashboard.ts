@@ -226,10 +226,10 @@ export async function DashboardPage(): Promise<HTMLElement> {
             ? `<img src="${faviconUrl(domain)}" width="16" height="16" alt="" class="source-favicon" onerror="this.style.display='none'" />`
             : ''
           return `
-          <div class="flex items-center justify-between py-2.5 group">
+          <a href="/applications?source=${encodeURIComponent(s.source)}" data-link class="source-row flex items-center justify-between py-2.5 group no-underline cursor-pointer hover:bg-surface-2/50 -mx-2 px-2 rounded transition-colors">
             <span class="text-sm text-primary/80 group-hover:text-primary transition-colors flex items-center gap-2.5">${favicon}${esc(s.source)}</span>
             <span class="text-sm font-semibold text-primary tabular-nums">${s.count}</span>
-          </div>`
+          </a>`
         }).join('')}
       </div>
     </div>

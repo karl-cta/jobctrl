@@ -161,6 +161,11 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 		like := "%" + search + "%"
 		args = append(args, like, like, like, like)
 	}
+	sourceFilter := q.Get("source")
+	if sourceFilter != "" {
+		query += " AND a.source = ?"
+		args = append(args, sourceFilter)
+	}
 
 	allowed := map[string]bool{
 		"created_at": true, "updated_at": true, "company_name": true,
@@ -186,6 +191,10 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 		countQuery += " AND (a.company_name LIKE ? OR a.job_title LIKE ? OR a.location LIKE ? OR a.source LIKE ?)"
 		like := "%" + search + "%"
 		countArgs = append(countArgs, like, like, like, like)
+	}
+	if sourceFilter != "" {
+		countQuery += " AND a.source = ?"
+		countArgs = append(countArgs, sourceFilter)
 	}
 	var total int
 	h.db.QueryRowContext(r.Context(), countQuery, countArgs...).Scan(&total)

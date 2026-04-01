@@ -39,6 +39,8 @@ const fr: Translations = {
   'list.view_table': 'Vue tableau',
   'list.view_kanban': 'Vue kanban',
   'list.kanban_empty': 'Aucune candidature',
+  'list.source_filter': 'Source',
+  'list.clear_source': 'Retirer le filtre source',
 
   // Detail
   'detail.not_found': 'Candidature introuvable',
@@ -220,6 +222,8 @@ const en: Translations = {
   'list.view_table': 'Table view',
   'list.view_kanban': 'Kanban view',
   'list.kanban_empty': 'No applications',
+  'list.source_filter': 'Source',
+  'list.clear_source': 'Clear source filter',
 
   // Detail
   'detail.not_found': 'Application not found',
