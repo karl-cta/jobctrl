@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    scroll-padding-top: 4rem; /* sticky header height (h-14 ≈ 3.5rem + margin) */
+  }
+
   :root {
     --color-surface: 250 249 248;
     --color-surface-1: 255 255 255;

@@ -35,11 +35,11 @@ async function render(path: string) {
       }
 
       app.innerHTML = ''
+      window.scrollTo(0, 0)
       const el = await route.handler(params)
       app.appendChild(el)
       app.classList.remove('route-exit')
       document.getElementById('main-content')?.focus({ preventScroll: true })
-      window.scrollTo(0, 0)
       return
     }
   }
