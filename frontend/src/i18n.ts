@@ -64,6 +64,7 @@ const fr: Translations = {
   'list.sort_rating_asc': 'Motivation ↑',
   'list.page_prev': 'Page précédente',
   'list.page_next': 'Page suivante',
+  'list.kanban_filter_hint': 'Utilisez les filtres pour affiner.',
 
   // Detail
   'detail.not_found': 'Candidature introuvable',
@@ -272,6 +273,7 @@ const en: Translations = {
   'list.sort_rating_asc': 'Interest ↑',
   'list.page_prev': 'Previous page',
   'list.page_next': 'Next page',
+  'list.kanban_filter_hint': 'Use filters to narrow down.',
 
   // Detail
   'detail.not_found': 'Application not found',

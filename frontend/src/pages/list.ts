@@ -120,7 +120,8 @@ export async function ListPage(): Promise<HTMLElement> {
     </div>`
   }
 
-  function renderKanban(apps: Application[]): string {
+  function renderKanban(apps: Application[], total: number): string {
+    const truncated = total > apps.length
     const columns = statusFilter ? [statusFilter as ApplicationStatus] : ALL_STATUSES
     const byStatus: Record<string, Application[]> = {}
     for (const s of ALL_STATUSES) byStatus[s] = []
@@ -129,6 +130,7 @@ export async function ListPage(): Promise<HTMLElement> {
     }
 
     return `
+      ${truncated ? `<div class="text-xs text-muted bg-surface-2/50 rounded px-3 py-2 mb-3">${apps.length} / ${total} ${tp('list.result_count', total)}. ${t('list.kanban_filter_hint')}</div>` : ''}
       <div class="overflow-x-auto pb-4 -mx-1 px-1">
         <div class="flex gap-3" style="min-width: max-content;">
           ${columns.map(status => {
@@ -319,7 +321,7 @@ export async function ListPage(): Promise<HTMLElement> {
         </div>
 
         <div id="apps-content">
-          ${viewMode === 'kanban' ? renderKanban(apps) : renderTable(apps)}
+          ${viewMode === 'kanban' ? renderKanban(apps, resp.total) : renderTable(apps)}
         </div>
       `
 
@@ -383,7 +385,7 @@ export async function ListPage(): Promise<HTMLElement> {
       const paginationEl = content.querySelector('#pagination')
       if (paginationEl) (paginationEl as HTMLElement).style.display = (viewMode === 'table' && resp.total_pages > 1) ? '' : 'none'
       await new Promise(r => setTimeout(r, 120))
-      el.innerHTML = viewMode === 'kanban' ? renderKanban(apps) : renderTable(apps)
+      el.innerHTML = viewMode === 'kanban' ? renderKanban(apps, resp.total) : renderTable(apps)
       el.classList.remove('content-swap')
       updateViewToggle()
     }

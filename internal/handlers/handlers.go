@@ -18,7 +18,7 @@ import (
 )
 
 const defaultPageSize = 20
-const maxPageSize = 100
+const maxPageSize = 500
 
 type Handler struct {
 	db *sql.DB
