@@ -50,6 +50,7 @@ func New(db *sql.DB, frontendFS embed.FS, version string) http.Handler {
 		r.Get("/stats", h.GetStats)
 		r.Get("/export", h.Export)
 		r.Post("/import", h.Import)
+		r.Get("/export/csv", h.ExportCSV)
 	})
 
 	sub, _ := fs.Sub(frontendFS, "frontend/dist")

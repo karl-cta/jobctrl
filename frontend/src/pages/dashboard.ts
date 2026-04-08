@@ -172,6 +172,8 @@ export async function DashboardPage(): Promise<HTMLElement> {
         </button>
         <div id="data-menu-dropdown" class="hidden absolute right-0 top-full mt-1 z-50 rounded border border-border shadow-elevated py-1" style="background: rgb(var(--color-surface-1));">
           <button id="export-btn" class="block w-full text-left px-4 py-3 text-sm text-primary hover:bg-surface-2 transition-colors whitespace-nowrap">${t('dashboard.export')}</button>
+          <button id="export-csv-btn" class="block w-full text-left px-4 py-3 text-sm text-primary hover:bg-surface-2 transition-colors whitespace-nowrap">${t('dashboard.export_csv')}</button>
+          <div class="border-t border-border/60 my-1"></div>
           <button id="import-btn" class="block w-full text-left px-4 py-3 text-sm text-primary hover:bg-surface-2 transition-colors whitespace-nowrap">${t('dashboard.import')}</button>
         </div>
         <input type="file" id="import-file" accept=".json" class="hidden" />
@@ -281,6 +283,12 @@ export async function DashboardPage(): Promise<HTMLElement> {
     a.download = `jobctrl-export-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
+  })
+
+  // Export CSV
+  content.querySelector('#export-csv-btn')?.addEventListener('click', () => {
+    closeMenu()
+    window.open('/api/export/csv', '_blank')
   })
 
   // Import JSON

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -56,6 +57,7 @@ func newTestServer(t *testing.T) *testServer {
 	r.Get("/api/stats", h.GetStats)
 	r.Get("/api/export", h.Export)
 	r.Post("/api/import", h.Import)
+	r.Get("/api/export/csv", h.ExportCSV)
 
 	ts := &testServer{handler: r, dbPath: f.Name()}
 	t.Cleanup(func() {
@@ -1165,5 +1167,58 @@ func TestImport_RoundTrip(t *testing.T) {
 	resp := decode[listResponse](t, list)
 	if resp.Total != 1 || resp.Data[0].CompanyName != "RoundTrip Inc" {
 		t.Errorf("round-trip data mismatch: %+v", resp)
+	}
+}
+
+// --- CSV Export tests ---
+
+func TestExportCSV_Empty(t *testing.T) {
+	ts := newTestServer(t)
+	w := ts.do(t, "GET", "/api/export/csv", nil)
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "text/csv; charset=utf-8" {
+		t.Errorf("expected text/csv, got %q", ct)
+	}
+	// BOM (3 bytes) + header row only
+	lines := strings.Split(strings.TrimSpace(w.Body.String()[3:]), "\n")
+	if len(lines) != 1 {
+		t.Errorf("expected 1 line (header only), got %d", len(lines))
+	}
+}
+
+func TestExportCSV_WithData(t *testing.T) {
+	ts := newTestServer(t)
+	ts.do(t, "POST", "/api/applications", map[string]any{
+		"company_name": "CSV Co", "job_title": "Dev", "salary": 50000,
+	})
+	ts.do(t, "POST", "/api/applications", map[string]any{
+		"company_name": "Another Co", "job_title": "Lead",
+	})
+
+	w := ts.do(t, "GET", "/api/export/csv", nil)
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	lines := strings.Split(strings.TrimSpace(w.Body.String()[3:]), "\n")
+	if len(lines) != 3 {
+		t.Errorf("expected 3 lines (header + 2 rows), got %d", len(lines))
+	}
+	if disp := w.Header().Get("Content-Disposition"); disp == "" {
+		t.Error("expected Content-Disposition header")
+	}
+}
+
+func TestExportCSV_SpecialChars(t *testing.T) {
+	ts := newTestServer(t)
+	ts.do(t, "POST", "/api/applications", map[string]any{
+		"company_name": `Acme, Inc. "Best"`, "job_title": "Dev",
+	})
+
+	w := ts.do(t, "GET", "/api/export/csv", nil)
+	body := w.Body.String()[3:] // skip BOM
+	if !strings.Contains(body, `"Acme, Inc. ""Best"""`) {
+		t.Errorf("CSV escaping failed, got: %s", body)
 	}
 }

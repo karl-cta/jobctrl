@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -965,6 +966,81 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 		"skipped":  skipped,
 		"total":    len(payload.Applications),
 	})
+}
+
+func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.db.QueryContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
+		company_size, company_location, job_title, job_url, job_description, contract_type, contract_duration, work_mode,
+		location, salary, salary_currency, status, applied_at, source,
+		notes, speech, rating, confidence, created_at, updated_at FROM applications ORDER BY created_at`)
+	if err != nil {
+		log.Printf("ExportCSV query: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not export data")
+		return
+	}
+	var apps []models.Application
+	for rows.Next() {
+		var a models.Application
+		if err := scanApplication(rows, &a); err != nil {
+			rows.Close()
+			log.Printf("ExportCSV scan: %v", err)
+			writeError(w, http.StatusInternalServerError, "could not export data")
+			return
+		}
+		apps = append(apps, a)
+	}
+	rows.Close()
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="jobctrl-export.csv"`)
+	w.WriteHeader(http.StatusOK)
+
+	// UTF-8 BOM for Excel compatibility
+	w.Write([]byte{0xEF, 0xBB, 0xBF})
+
+	cw := csv.NewWriter(w)
+	defer cw.Flush()
+
+	cw.Write([]string{
+		"Company", "Website", "Industry", "Company Size", "Company Location",
+		"Job Title", "Job URL", "Contract", "Duration (months)", "Work Mode",
+		"Location", "Salary", "Status", "Applied At", "Source",
+		"Rating", "Confidence", "Created At",
+	})
+
+	for _, a := range apps {
+		cw.Write([]string{
+			a.CompanyName, ptrStr(a.CompanyWebsite), ptrStr(a.CompanyIndustry),
+			ptrStr(a.CompanySize), ptrStr(a.CompanyLocation),
+			a.JobTitle, ptrStr(a.JobURL), string(a.ContractType), ptrIntStr(a.ContractDuration),
+			string(a.WorkMode), ptrStr(a.Location),
+			ptrIntStr(a.Salary), string(a.Status),
+			ptrTimeStr(a.AppliedAt), ptrStr(a.Source),
+			ptrIntStr(a.Rating), ptrIntStr(a.Confidence),
+			a.CreatedAt.Format("2006-01-02"),
+		})
+	}
+}
+
+func ptrStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func ptrIntStr(n *int) string {
+	if n == nil {
+		return ""
+	}
+	return strconv.Itoa(*n)
+}
+
+func ptrTimeStr(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format("2006-01-02")
 }
 
 // Helpers
