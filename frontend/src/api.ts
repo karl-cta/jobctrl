@@ -55,4 +55,6 @@ export const api = {
   sources: () => request<string[]>('/sources'),
   stats: () => request<Stats>('/stats'),
   export: () => request<unknown>('/export'),
+  import_: (data: unknown) =>
+    request<{ imported: number; skipped: number; total: number }>('/import', { method: 'POST', body: JSON.stringify(data) }),
 }

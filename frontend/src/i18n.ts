@@ -24,6 +24,13 @@ const fr: Translations = {
   'dashboard.over_time': 'Candidatures dans le temps',
   'dashboard.status_distribution': 'Répartition des statuts',
   'dashboard.no_data': 'Aucune donnée',
+  'dashboard.data_menu': 'Données',
+  'dashboard.export': 'Sauvegarder mes données (JSON)',
+  'dashboard.import': 'Restaurer une sauvegarde',
+  'dashboard.import_success': 'importée(s)',
+  'dashboard.import_skipped': 'ignorée(s)',
+  'dashboard.import_error': 'Erreur lors de l\'import',
+  'dashboard.import_invalid': 'Fichier JSON invalide',
 
   // List
   'list.title': 'Candidatures',
@@ -225,6 +232,13 @@ const en: Translations = {
   'dashboard.over_time': 'Applications over time',
   'dashboard.status_distribution': 'Status distribution',
   'dashboard.no_data': 'No data',
+  'dashboard.data_menu': 'Data',
+  'dashboard.export': 'Back up my data (JSON)',
+  'dashboard.import': 'Restore a backup',
+  'dashboard.import_success': 'imported',
+  'dashboard.import_skipped': 'skipped',
+  'dashboard.import_error': 'Import failed',
+  'dashboard.import_invalid': 'Invalid JSON file',
 
   // List
   'list.title': 'Applications',

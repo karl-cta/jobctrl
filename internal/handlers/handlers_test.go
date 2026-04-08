@@ -55,6 +55,7 @@ func newTestServer(t *testing.T) *testServer {
 	r.Delete("/api/contacts/{id}", h.DeleteContact)
 	r.Get("/api/stats", h.GetStats)
 	r.Get("/api/export", h.Export)
+	r.Post("/api/import", h.Import)
 
 	ts := &testServer{handler: r, dbPath: f.Name()}
 	t.Cleanup(func() {
@@ -1016,5 +1017,153 @@ func TestListApplications_SortByRating(t *testing.T) {
 	resp := decode[listResponse](t, w)
 	if resp.Data[0].CompanyName != "High" {
 		t.Errorf("expected High first sorted by rating desc, got %q", resp.Data[0].CompanyName)
+	}
+}
+
+// --- Import tests ---
+
+func TestImport_Empty(t *testing.T) {
+	ts := newTestServer(t)
+	w := ts.do(t, "POST", "/api/import", map[string]any{"applications": []any{}})
+	if w.Code != 400 {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestImport_InvalidJSON(t *testing.T) {
+	ts := newTestServer(t)
+	req := httptest.NewRequest("POST", "/api/import", bytes.NewBufferString("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	ts.handler.ServeHTTP(w, req)
+	if w.Code != 400 {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestImport_Single(t *testing.T) {
+	ts := newTestServer(t)
+	payload := map[string]any{
+		"applications": []map[string]any{
+			{"company_name": "ImportCo", "job_title": "Dev"},
+		},
+	}
+	w := ts.do(t, "POST", "/api/import", payload)
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	result := decode[map[string]any](t, w)
+	if int(result["imported"].(float64)) != 1 {
+		t.Errorf("expected 1 imported, got %v", result["imported"])
+	}
+
+	// Verify it exists
+	list := ts.do(t, "GET", "/api/applications", nil)
+	resp := decode[listResponse](t, list)
+	if resp.Total != 1 || resp.Data[0].CompanyName != "ImportCo" {
+		t.Errorf("expected ImportCo, got %v", resp)
+	}
+}
+
+func TestImport_WithRelations(t *testing.T) {
+	ts := newTestServer(t)
+	payload := map[string]any{
+		"applications": []map[string]any{
+			{
+				"id": "test-import-123", "company_name": "RelCo", "job_title": "Lead",
+				"interviews": []map[string]any{
+					{"round": 1, "type": "Phone"},
+				},
+				"contacts": []map[string]any{
+					{"name": "Jane Doe"},
+				},
+				"timeline_events": []map[string]any{
+					{"event_type": "created", "description": "Application created"},
+				},
+			},
+		},
+	}
+	w := ts.do(t, "POST", "/api/import", payload)
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify relations
+	detail := ts.do(t, "GET", "/api/applications/test-import-123", nil)
+	app := decode[models.Application](t, detail)
+	if len(app.Interviews) != 1 {
+		t.Errorf("expected 1 interview, got %d", len(app.Interviews))
+	}
+	if len(app.Contacts) != 1 {
+		t.Errorf("expected 1 contact, got %d", len(app.Contacts))
+	}
+	if len(app.TimelineEvents) != 1 {
+		t.Errorf("expected 1 timeline event, got %d", len(app.TimelineEvents))
+	}
+}
+
+func TestImport_DuplicateSkip(t *testing.T) {
+	ts := newTestServer(t)
+	payload := map[string]any{
+		"applications": []map[string]any{
+			{"id": "dup-id-1", "company_name": "DupCo", "job_title": "Dev"},
+		},
+	}
+
+	// First import
+	w1 := ts.do(t, "POST", "/api/import", payload)
+	r1 := decode[map[string]any](t, w1)
+	if int(r1["imported"].(float64)) != 1 {
+		t.Errorf("first import: expected 1 imported, got %v", r1["imported"])
+	}
+
+	// Second import same ID
+	w2 := ts.do(t, "POST", "/api/import", payload)
+	r2 := decode[map[string]any](t, w2)
+	if int(r2["skipped"].(float64)) != 1 {
+		t.Errorf("second import: expected 1 skipped, got %v", r2["skipped"])
+	}
+	if int(r2["imported"].(float64)) != 0 {
+		t.Errorf("second import: expected 0 imported, got %v", r2["imported"])
+	}
+}
+
+func TestImport_RoundTrip(t *testing.T) {
+	ts := newTestServer(t)
+
+	// Create an application with relations
+	app := ts.do(t, "POST", "/api/applications", map[string]any{
+		"company_name": "RoundTrip Inc", "job_title": "Engineer", "status": "Applied",
+	})
+	created := decode[models.Application](t, app)
+
+	ts.do(t, "POST", "/api/applications/"+created.ID+"/interviews", map[string]any{
+		"round": 1, "type": "Phone",
+	})
+	ts.do(t, "POST", "/api/applications/"+created.ID+"/contacts", map[string]any{
+		"name": "Bob",
+	})
+
+	// Export
+	exportW := ts.do(t, "GET", "/api/export", nil)
+	var exportData map[string]any
+	json.NewDecoder(exportW.Body).Decode(&exportData)
+
+	// Import into fresh server
+	ts2 := newTestServer(t)
+	importW := ts2.do(t, "POST", "/api/import", exportData)
+	if importW.Code != 200 {
+		t.Fatalf("import failed: %d %s", importW.Code, importW.Body.String())
+	}
+	result := decode[map[string]any](t, importW)
+	if int(result["imported"].(float64)) != 1 {
+		t.Errorf("expected 1 imported, got %v", result["imported"])
+	}
+
+	// Verify data in new server
+	list := ts2.do(t, "GET", "/api/applications", nil)
+	resp := decode[listResponse](t, list)
+	if resp.Total != 1 || resp.Data[0].CompanyName != "RoundTrip Inc" {
+		t.Errorf("round-trip data mismatch: %+v", resp)
 	}
 }

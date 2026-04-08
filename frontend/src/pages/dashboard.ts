@@ -1,7 +1,9 @@
 import { api } from '../api'
 import { createLayout } from '../components/layout'
+import { navigate } from '../router'
 import { t, tp } from '../i18n'
 import { esc } from '../sanitize'
+import { toast } from '../components/toast'
 import { statusLabel, statusLabelCount, ALL_STATUSES } from '../types'
 import type { Stats } from '../types'
 import { faviconUrl, getSourceDomain } from '../job-boards'
@@ -162,8 +164,18 @@ export async function DashboardPage(): Promise<HTMLElement> {
   }
 
   content.innerHTML = `
-    <div>
+    <div class="flex items-center justify-between relative z-10">
       <h1 class="text-2xl font-bold text-primary tracking-tight">${t('dashboard.title')}</h1>
+      <div class="relative" id="data-menu">
+        <button id="data-menu-btn" class="btn-ghost p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-muted" title="${t('dashboard.data_menu')}" aria-haspopup="true" aria-expanded="false">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm6 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm6 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"/></svg>
+        </button>
+        <div id="data-menu-dropdown" class="hidden absolute right-0 top-full mt-1 z-50 rounded border border-border shadow-elevated py-1" style="background: rgb(var(--color-surface-1));">
+          <button id="export-btn" class="block w-full text-left px-4 py-3 text-sm text-primary hover:bg-surface-2 transition-colors whitespace-nowrap">${t('dashboard.export')}</button>
+          <button id="import-btn" class="block w-full text-left px-4 py-3 text-sm text-primary hover:bg-surface-2 transition-colors whitespace-nowrap">${t('dashboard.import')}</button>
+        </div>
+        <input type="file" id="import-file" accept=".json" class="hidden" />
+      </div>
     </div>
 
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-10">
@@ -234,7 +246,67 @@ export async function DashboardPage(): Promise<HTMLElement> {
       </div>
     </div>
     ` : ''}
+
   `
+
+  // Data menu dropdown
+  const menuBtn = content.querySelector('#data-menu-btn') as HTMLElement
+  const dropdown = content.querySelector('#data-menu-dropdown') as HTMLElement
+  const closeMenu = () => {
+    dropdown.classList.replace('dropdown-enter', 'dropdown-exit')
+    dropdown.addEventListener('animationend', () => { dropdown.classList.add('hidden'); dropdown.classList.remove('dropdown-exit') }, { once: true })
+    menuBtn.setAttribute('aria-expanded', 'false')
+  }
+  menuBtn?.addEventListener('click', () => {
+    const open = !dropdown.classList.contains('hidden')
+    if (open) { closeMenu(); return }
+    dropdown.classList.remove('hidden')
+    dropdown.classList.add('dropdown-enter')
+    menuBtn.setAttribute('aria-expanded', 'true')
+  })
+  document.addEventListener('click', (e) => {
+    if (!content.querySelector('#data-menu')?.contains(e.target as Node) && !dropdown.classList.contains('hidden')) {
+      closeMenu()
+    }
+  })
+
+  // Export JSON
+  content.querySelector('#export-btn')?.addEventListener('click', async () => {
+    closeMenu()
+    const data = await api.export()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `jobctrl-export-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  })
+
+  // Import JSON
+  const importFile = content.querySelector('#import-file') as HTMLInputElement
+  content.querySelector('#import-btn')?.addEventListener('click', () => { closeMenu(); importFile.click() })
+  importFile?.addEventListener('change', async () => {
+    const file = importFile.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      if (!data.applications) {
+        toast(t('dashboard.import_invalid'), 'error')
+        return
+      }
+      const result = await api.import_(data)
+      const parts = [`${result.imported} ${t('dashboard.import_success')}`]
+      if (result.skipped > 0) parts.push(`${result.skipped} ${t('dashboard.import_skipped')}`)
+      toast(parts.join(', '), result.imported > 0 ? 'success' : 'info')
+      if (result.imported > 0) setTimeout(() => navigate('/'), 1500)
+    } catch {
+      toast(t('dashboard.import_error'), 'error')
+    } finally {
+      importFile.value = ''
+    }
+  })
 
   requestAnimationFrame(() => {
     animateCounters(content)

@@ -821,6 +821,152 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"applications": apps, "exported_at": time.Now().UTC()})
 }
 
+func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20) // 50MB limit
+
+	var payload struct {
+		Applications []models.Application `json:"applications"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if len(payload.Applications) == 0 {
+		writeError(w, http.StatusBadRequest, "no applications to import")
+		return
+	}
+
+	var imported, skipped int
+	now := time.Now().UTC()
+
+	for _, a := range payload.Applications {
+		// Defaults
+		if a.SalaryCurrency == "" {
+			a.SalaryCurrency = "EUR"
+		}
+		if a.Status == "" {
+			a.Status = models.StatusWishlist
+		}
+		if a.ContractType == "" {
+			a.ContractType = models.ContractCDI
+		}
+		if a.WorkMode == "" {
+			a.WorkMode = models.WorkModeHybrid
+		}
+		if err := validateApplication(&a); err != nil {
+			skipped++
+			continue
+		}
+
+		// Duplicate check by ID
+		if a.ID != "" {
+			var exists int
+			h.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM applications WHERE id = ?", a.ID).Scan(&exists)
+			if exists > 0 {
+				skipped++
+				continue
+			}
+		} else {
+			a.ID = uuid.New().String()
+		}
+
+		// Preserve or set timestamps
+		if a.CreatedAt.IsZero() {
+			a.CreatedAt = now
+		}
+		if a.UpdatedAt.IsZero() {
+			a.UpdatedAt = now
+		}
+
+		var appliedAtStr *string
+		if a.AppliedAt != nil {
+			s := sqliteTime(*a.AppliedAt)
+			appliedAtStr = &s
+		}
+
+		_, err := h.db.ExecContext(r.Context(), `INSERT INTO applications
+			(id, company_name, company_website, company_industry, company_size, company_location,
+			job_title, job_url, job_description, contract_type, contract_duration, work_mode, location,
+			salary, salary_currency, status, applied_at, source, notes, speech, rating, confidence,
+			created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			a.ID, a.CompanyName, a.CompanyWebsite, a.CompanyIndustry, a.CompanySize, a.CompanyLocation,
+			a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.ContractDuration, a.WorkMode, a.Location,
+			a.Salary, a.SalaryCurrency, a.Status, appliedAtStr, a.Source, a.Notes, a.Speech, a.Rating, a.Confidence,
+			sqliteTime(a.CreatedAt), sqliteTime(a.UpdatedAt),
+		)
+		if err != nil {
+			skipped++
+			continue
+		}
+
+		// Import interviews
+		for _, iv := range a.Interviews {
+			if iv.ID == "" {
+				iv.ID = uuid.New().String()
+			}
+			iv.ApplicationID = a.ID
+			if iv.CreatedAt.IsZero() {
+				iv.CreatedAt = now
+			}
+			if validateInterview(&iv) != nil {
+				continue
+			}
+			var scheduledStr *string
+			if iv.ScheduledAt != nil {
+				s := sqliteTime(*iv.ScheduledAt)
+				scheduledStr = &s
+			}
+			h.db.ExecContext(r.Context(), `INSERT INTO interviews
+				(id, application_id, round, type, scheduled_at, duration_minutes, interviewer_name,
+				interviewer_role, notes, prep_notes, outcome, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+				iv.ID, iv.ApplicationID, iv.Round, iv.Type, scheduledStr, iv.DurationMinutes,
+				iv.InterviewerName, iv.InterviewerRole, iv.Notes, iv.PrepNotes, iv.Outcome, sqliteTime(iv.CreatedAt),
+			)
+		}
+
+		// Import contacts
+		for _, c := range a.Contacts {
+			if c.ID == "" {
+				c.ID = uuid.New().String()
+			}
+			c.ApplicationID = a.ID
+			if c.CreatedAt.IsZero() {
+				c.CreatedAt = now
+			}
+			if validateContact(&c) != nil {
+				continue
+			}
+			h.db.ExecContext(r.Context(), `INSERT INTO contacts
+				(id, application_id, name, role, email, phone, linkedin, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+				c.ID, c.ApplicationID, c.Name, c.Role, c.Email, c.Phone, c.LinkedIn, c.Notes, sqliteTime(c.CreatedAt),
+			)
+		}
+
+		// Import timeline events
+		for _, e := range a.TimelineEvents {
+			if e.ID == "" {
+				e.ID = uuid.New().String()
+			}
+			e.ApplicationID = a.ID
+			if e.CreatedAt.IsZero() {
+				e.CreatedAt = now
+			}
+			h.db.ExecContext(r.Context(), `INSERT INTO timeline_events
+				(id, application_id, event_type, description, created_at) VALUES (?,?,?,?,?)`,
+				e.ID, e.ApplicationID, e.EventType, e.Description, sqliteTime(e.CreatedAt),
+			)
+		}
+
+		imported++
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"imported": imported,
+		"skipped":  skipped,
+		"total":    len(payload.Applications),
+	})
+}
+
 // Helpers
 
 type scanner interface {
