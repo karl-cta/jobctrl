@@ -1,6 +1,6 @@
 import { api } from '../api'
 import { createLayout } from '../components/layout'
-import { navigate } from '../router'
+import { navigate, setNavigationGuard, setNavigationCleanup } from '../router'
 import { t } from '../i18n'
 import { icons } from '../icons'
 import { toast } from '../components/toast'
@@ -182,8 +182,31 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
     </form>
   `
 
-  content.querySelector('#back-btn')?.addEventListener('click', () => window.history.back())
-  content.querySelector('#cancel-btn')?.addEventListener('click', () => window.history.back())
+  // Dirty tracking & navigation guard
+  const form = content.querySelector('#app-form') as HTMLFormElement
+  let formSubmitted = false
+  const getSnapshot = () => {
+    const fd = new FormData(form)
+    return JSON.stringify(Object.fromEntries(fd))
+  }
+  const initialSnapshot = getSnapshot()
+  const isDirty = () => !formSubmitted && getSnapshot() !== initialSnapshot
+
+  const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    if (isDirty()) e.preventDefault()
+  }
+  window.addEventListener('beforeunload', handleBeforeUnload)
+
+  setNavigationGuard(() => {
+    if (!isDirty()) return true
+    return confirm(t('form.unsaved_changes'))
+  })
+  setNavigationCleanup(() => {
+    window.removeEventListener('beforeunload', handleBeforeUnload)
+  })
+
+  content.querySelector('#back-btn')?.addEventListener('click', () => navigate(isEdit ? '/applications/' + id : '/applications'))
+  content.querySelector('#cancel-btn')?.addEventListener('click', () => navigate(isEdit ? '/applications/' + id : '/applications'))
 
   const sourceInput = content.querySelector('#f-source') as HTMLInputElement | null
   if (sourceInput) setupSourceAutocomplete(sourceInput, () => api.sources())
@@ -380,6 +403,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         : await api.applications.create(payload)
 
       toast(isEdit ? t('form.saved') : t('form.created'), 'success')
+      formSubmitted = true
       navigate('/applications/' + result.id)
     } catch (err) {
       toast(err instanceof Error ? err.message : t('form.error'), 'error')

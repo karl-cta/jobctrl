@@ -2,6 +2,22 @@ type Handler = (params: Record<string, string>) => Promise<HTMLElement>
 
 const routes: Array<{ pattern: RegExp; keys: string[]; handler: Handler }> = []
 
+let navigationGuard: (() => boolean) | null = null
+let navigationCleanup: (() => void) | null = null
+
+export function setNavigationGuard(guard: (() => boolean) | null) {
+  navigationGuard = guard
+}
+
+export function setNavigationCleanup(cleanup: (() => void) | null) {
+  navigationCleanup = cleanup
+}
+
+function checkGuard(): boolean {
+  if (navigationGuard && !navigationGuard()) return false
+  return true
+}
+
 export function addRoute(path: string, handler: Handler) {
   const keys: string[] = []
   const pattern = new RegExp(
@@ -11,11 +27,15 @@ export function addRoute(path: string, handler: Handler) {
 }
 
 export async function navigate(path: string) {
+  if (!checkGuard()) return
   window.history.pushState({}, '', path)
   await render(path)
 }
 
 async function render(path: string) {
+  if (navigationCleanup) { navigationCleanup(); navigationCleanup = null }
+  navigationGuard = null
+
   const app = document.getElementById('app')!
   const pathname = path.split('?')[0]
   for (const route of routes) {
@@ -48,7 +68,13 @@ async function render(path: string) {
 }
 
 export function initRouter() {
-  window.addEventListener('popstate', () => render(location.pathname))
+  window.addEventListener('popstate', () => {
+    if (!checkGuard()) {
+      window.history.pushState({}, '', location.pathname)
+      return
+    }
+    render(location.pathname)
+  })
   document.addEventListener('click', (e) => {
     const target = (e.target as HTMLElement).closest('a[data-link]') as HTMLAnchorElement | null
     if (target) {
