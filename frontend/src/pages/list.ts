@@ -58,6 +58,7 @@ export async function ListPage(): Promise<HTMLElement> {
   let sourceFilter = urlParams.get('source') || ''
   let searchQuery = ''
   let sortValue = localStorage.getItem('jc-sort') || 'created_at:desc'
+  let currentPage = 1
   let viewMode: 'table' | 'kanban' = (localStorage.getItem('jc-view') as 'table' | 'kanban') || 'table'
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -220,6 +221,7 @@ export async function ListPage(): Promise<HTMLElement> {
       search: searchQuery,
       sort: sortField,
       dir: sortDir,
+      page: viewMode === 'table' ? currentPage : undefined,
       per_page: viewMode === 'kanban' ? 200 : 20,
     }).catch(() => ({ data: [], total: 0, page: 1, per_page: 20, total_pages: 1 }))
     const apps = resp.data
@@ -303,6 +305,17 @@ export async function ListPage(): Promise<HTMLElement> {
 
         <div class="flex items-center justify-between">
           <span id="result-count" class="text-xs text-muted/60 tabular-nums">${resp.total} ${tp('list.result_count', resp.total)}</span>
+          ${viewMode === 'table' && resp.total_pages > 1 ? `
+          <div id="pagination" class="flex items-center gap-1.5">
+            <button id="prev-page" class="btn-ghost p-1.5 ${resp.page <= 1 ? 'opacity-30 pointer-events-none' : ''}" title="${t('list.page_prev')}" ${resp.page <= 1 ? 'disabled' : ''}>
+              ${icons.chevronLeft}
+            </button>
+            <span id="page-indicator" class="text-xs text-muted tabular-nums px-1">${resp.page} / ${resp.total_pages}</span>
+            <button id="next-page" class="btn-ghost p-1.5 ${resp.page >= resp.total_pages ? 'opacity-30 pointer-events-none' : ''}" title="${t('list.page_next')}" ${resp.page >= resp.total_pages ? 'disabled' : ''}>
+              ${icons.chevronRight}
+            </button>
+          </div>
+          ` : ''}
         </div>
 
         <div id="apps-content">
@@ -313,6 +326,7 @@ export async function ListPage(): Promise<HTMLElement> {
       content.querySelector('#view-table')?.addEventListener('click', () => {
         viewMode = 'table'
         localStorage.setItem('jc-view', 'table')
+        currentPage = 1
         load()
       })
       content.querySelector('#view-kanban')?.addEventListener('click', () => {
@@ -323,20 +337,30 @@ export async function ListPage(): Promise<HTMLElement> {
 
       content.querySelector('#search-input')?.addEventListener('input', (e) => {
         searchQuery = (e.target as HTMLInputElement).value
+        currentPage = 1
         if (debounceTimer) clearTimeout(debounceTimer)
         debounceTimer = setTimeout(() => load(), 200)
       })
       content.querySelector('#status-filter')?.addEventListener('change', (e) => {
         statusFilter = (e.target as HTMLSelectElement).value
+        currentPage = 1
         load()
       })
       content.querySelector('#sort-select')?.addEventListener('change', (e) => {
         sortValue = (e.target as HTMLSelectElement).value
         localStorage.setItem('jc-sort', sortValue)
+        currentPage = 1
         load()
+      })
+      content.querySelector('#prev-page')?.addEventListener('click', () => {
+        if (currentPage > 1) { currentPage--; load() }
+      })
+      content.querySelector('#next-page')?.addEventListener('click', () => {
+        currentPage++; load()
       })
       content.querySelector('#clear-source')?.addEventListener('click', () => {
         sourceFilter = ''
+        currentPage = 1
         window.history.replaceState({}, '', '/applications')
         const chip = content.querySelector('#source-chip')
         if (chip) {
@@ -350,6 +374,14 @@ export async function ListPage(): Promise<HTMLElement> {
       el.classList.add('content-swap')
       const countEl = content.querySelector('#result-count')
       if (countEl) countEl.textContent = `${resp.total} ${tp('list.result_count', resp.total)}`
+      const pageEl = content.querySelector('#page-indicator')
+      if (pageEl) pageEl.textContent = `${resp.page} / ${resp.total_pages}`
+      const prevBtn = content.querySelector('#prev-page') as HTMLButtonElement | null
+      const nextBtn = content.querySelector('#next-page') as HTMLButtonElement | null
+      if (prevBtn) { prevBtn.disabled = resp.page <= 1; prevBtn.className = `btn-ghost p-1.5 ${resp.page <= 1 ? 'opacity-30 pointer-events-none' : ''}` }
+      if (nextBtn) { nextBtn.disabled = resp.page >= resp.total_pages; nextBtn.className = `btn-ghost p-1.5 ${resp.page >= resp.total_pages ? 'opacity-30 pointer-events-none' : ''}` }
+      const paginationEl = content.querySelector('#pagination')
+      if (paginationEl) (paginationEl as HTMLElement).style.display = (viewMode === 'table' && resp.total_pages > 1) ? '' : 'none'
       await new Promise(r => setTimeout(r, 120))
       el.innerHTML = viewMode === 'kanban' ? renderKanban(apps) : renderTable(apps)
       el.classList.remove('content-swap')

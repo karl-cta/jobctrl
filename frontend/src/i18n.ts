@@ -55,6 +55,8 @@ const fr: Translations = {
   'list.sort_confidence_asc': 'Confiance ↑',
   'list.sort_rating_desc': 'Motivation ↓',
   'list.sort_rating_asc': 'Motivation ↑',
+  'list.page_prev': 'Page précédente',
+  'list.page_next': 'Page suivante',
 
   // Detail
   'detail.not_found': 'Candidature introuvable',
@@ -253,6 +255,8 @@ const en: Translations = {
   'list.sort_confidence_asc': 'Confidence ↑',
   'list.sort_rating_desc': 'Interest ↓',
   'list.sort_rating_asc': 'Interest ↑',
+  'list.page_prev': 'Previous page',
+  'list.page_next': 'Next page',
 
   // Detail
   'detail.not_found': 'Application not found',
