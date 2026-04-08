@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -205,7 +206,8 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.db.QueryContext(r.Context(), query, args...)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		log.Printf("ListApplications query: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load applications")
 		return
 	}
 	defer rows.Close()
@@ -228,7 +230,8 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 			&a.CreatedAt, &a.UpdatedAt,
 			&a.InterviewCount, &a.ContactCount,
 		); err != nil {
-			writeError(w, http.StatusInternalServerError, "scan failed")
+			log.Printf("ListApplications scan: %v", err)
+			writeError(w, http.StatusInternalServerError, "could not load applications")
 			return
 		}
 		apps = append(apps, a)
@@ -262,10 +265,11 @@ func (h *Handler) GetApplication(w http.ResponseWriter, r *http.Request) {
 		location, salary, salary_currency, status, applied_at, source,
 		notes, speech, rating, confidence, created_at, updated_at FROM applications WHERE id = ?`, id)
 	if err := scanApplication(row, &a); err == sql.ErrNoRows {
-		writeError(w, http.StatusNotFound, "not found")
+		writeError(w, http.StatusNotFound, "application not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		log.Printf("GetApplication: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load application")
 		return
 	}
 
@@ -326,7 +330,8 @@ func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 		sqliteTime(a.CreatedAt), sqliteTime(a.UpdatedAt),
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "insert failed")
+		log.Printf("CreateApplication: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not create application")
 		return
 	}
 
@@ -343,7 +348,8 @@ func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "application not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		log.Printf("UpdateApplication lookup: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load application")
 		return
 	}
 
@@ -381,7 +387,8 @@ func (h *Handler) UpdateApplication(w http.ResponseWriter, r *http.Request) {
 		a.Notes, a.Speech, a.Rating, a.Confidence, sqliteTime(a.UpdatedAt), id,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		log.Printf("UpdateApplication: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not update application")
 		return
 	}
 
@@ -397,12 +404,13 @@ func (h *Handler) DeleteApplication(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	result, err := h.db.ExecContext(r.Context(), `DELETE FROM applications WHERE id=?`, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		log.Printf("DeleteApplication: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not delete application")
 		return
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		writeError(w, http.StatusNotFound, "not found")
+		writeError(w, http.StatusNotFound, "application not found")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -414,7 +422,8 @@ func (h *Handler) ListInterviews(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	interviews, err := h.getInterviewsByApplication(r, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		log.Printf("ListInterviews: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load interviews")
 		return
 	}
 	writeJSON(w, http.StatusOK, interviews)
@@ -430,10 +439,11 @@ func (h *Handler) GetInterview(w http.ResponseWriter, r *http.Request) {
 		&iv.DurationMinutes, &iv.InterviewerName, &iv.InterviewerRole, &iv.Notes,
 		&iv.PrepNotes, &iv.Outcome, &iv.CreatedAt)
 	if err == sql.ErrNoRows {
-		writeError(w, http.StatusNotFound, "not found")
+		writeError(w, http.StatusNotFound, "interview not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		log.Printf("GetInterview: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load interview")
 		return
 	}
 	writeJSON(w, http.StatusOK, iv)
@@ -443,7 +453,7 @@ func (h *Handler) CreateInterview(w http.ResponseWriter, r *http.Request) {
 	appID := chi.URLParam(r, "id")
 	var iv models.Interview
 	if err := json.NewDecoder(r.Body).Decode(&iv); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if err := validateInterview(&iv); err != nil {
@@ -467,7 +477,8 @@ func (h *Handler) CreateInterview(w http.ResponseWriter, r *http.Request) {
 		iv.InterviewerName, iv.InterviewerRole, iv.Notes, iv.PrepNotes, iv.Outcome, sqliteTime(iv.CreatedAt),
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "insert failed")
+		log.Printf("CreateInterview: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not create interview")
 		return
 	}
 	h.addTimelineEvent(r, appID, "interview_added", fmt.Sprintf("Interview round %d (%s) added", iv.Round, iv.Type))
@@ -478,7 +489,7 @@ func (h *Handler) UpdateInterview(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var iv models.Interview
 	if err := json.NewDecoder(r.Body).Decode(&iv); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if err := validateInterview(&iv); err != nil {
@@ -499,12 +510,13 @@ func (h *Handler) UpdateInterview(w http.ResponseWriter, r *http.Request) {
 		iv.InterviewerRole, iv.Notes, iv.PrepNotes, iv.Outcome, id,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		log.Printf("UpdateInterview: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not update interview")
 		return
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		writeError(w, http.StatusNotFound, "not found")
+		writeError(w, http.StatusNotFound, "interview not found")
 		return
 	}
 	iv.ID = id
@@ -517,12 +529,13 @@ func (h *Handler) DeleteInterview(w http.ResponseWriter, r *http.Request) {
 	h.db.QueryRowContext(r.Context(), `SELECT application_id FROM interviews WHERE id=?`, id).Scan(&appID)
 	result, err := h.db.ExecContext(r.Context(), `DELETE FROM interviews WHERE id=?`, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		log.Printf("DeleteInterview: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not delete interview")
 		return
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		writeError(w, http.StatusNotFound, "not found")
+		writeError(w, http.StatusNotFound, "interview not found")
 		return
 	}
 	if appID != "" {
@@ -537,7 +550,8 @@ func (h *Handler) ListContacts(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	contacts, err := h.getContactsByApplication(r, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		log.Printf("ListContacts: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load contacts")
 		return
 	}
 	writeJSON(w, http.StatusOK, contacts)
@@ -550,10 +564,11 @@ func (h *Handler) GetContact(w http.ResponseWriter, r *http.Request) {
 		FROM contacts WHERE id = ?`, id)
 	err := row.Scan(&c.ID, &c.ApplicationID, &c.Name, &c.Role, &c.Email, &c.Phone, &c.LinkedIn, &c.Notes, &c.CreatedAt)
 	if err == sql.ErrNoRows {
-		writeError(w, http.StatusNotFound, "not found")
+		writeError(w, http.StatusNotFound, "contact not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		log.Printf("GetContact: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load contact")
 		return
 	}
 	writeJSON(w, http.StatusOK, c)
@@ -563,7 +578,7 @@ func (h *Handler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	appID := chi.URLParam(r, "id")
 	var c models.Contact
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if err := validateContact(&c); err != nil {
@@ -580,7 +595,8 @@ func (h *Handler) CreateContact(w http.ResponseWriter, r *http.Request) {
 		c.ID, c.ApplicationID, c.Name, c.Role, c.Email, c.Phone, c.LinkedIn, c.Notes, sqliteTime(c.CreatedAt),
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "insert failed")
+		log.Printf("CreateContact: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not create contact")
 		return
 	}
 	h.addTimelineEvent(r, appID, "contact_added", fmt.Sprintf("Contact %s added", c.Name))
@@ -591,7 +607,7 @@ func (h *Handler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var c models.Contact
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if err := validateContact(&c); err != nil {
@@ -601,12 +617,13 @@ func (h *Handler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 	result, err := h.db.ExecContext(r.Context(), `UPDATE contacts SET name=?, role=?, email=?, phone=?, linkedin=?, notes=? WHERE id=?`,
 		c.Name, c.Role, c.Email, c.Phone, c.LinkedIn, c.Notes, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		log.Printf("UpdateContact: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not update contact")
 		return
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		writeError(w, http.StatusNotFound, "not found")
+		writeError(w, http.StatusNotFound, "contact not found")
 		return
 	}
 	c.ID = id
@@ -619,12 +636,13 @@ func (h *Handler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 	h.db.QueryRowContext(r.Context(), `SELECT application_id FROM contacts WHERE id=?`, id).Scan(&appID)
 	result, err := h.db.ExecContext(r.Context(), `DELETE FROM contacts WHERE id=?`, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		log.Printf("DeleteContact: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not delete contact")
 		return
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		writeError(w, http.StatusNotFound, "not found")
+		writeError(w, http.StatusNotFound, "contact not found")
 		return
 	}
 	if appID != "" {
@@ -777,7 +795,8 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		location, salary, salary_currency, status, applied_at, source,
 		notes, speech, rating, confidence, created_at, updated_at FROM applications ORDER BY created_at`)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		log.Printf("Export query: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not export data")
 		return
 	}
 	var apps []models.Application
@@ -785,7 +804,8 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		var a models.Application
 		if err := scanApplication(rows, &a); err != nil {
 			rows.Close()
-			writeError(w, http.StatusInternalServerError, "scan failed")
+			log.Printf("Export scan: %v", err)
+			writeError(w, http.StatusInternalServerError, "could not export data")
 			return
 		}
 		apps = append(apps, a)
