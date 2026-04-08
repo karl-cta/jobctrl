@@ -1,4 +1,5 @@
 import { t } from '../i18n'
+import { esc } from '../sanitize'
 
 export function openModal(opts: { title: string; content: HTMLElement; onClose?: () => void }): { el: HTMLElement; close: () => void } {
   const overlay = document.createElement('div')
@@ -14,7 +15,7 @@ export function openModal(opts: { title: string; content: HTMLElement; onClose?:
   const header = document.createElement('div')
   header.className = 'flex items-center justify-between px-5 py-4 border-b border-border'
   header.innerHTML = `
-    <h2 class="text-base font-semibold text-primary">${opts.title}</h2>
+    <h2 class="text-base font-semibold text-primary">${esc(opts.title)}</h2>
     <button class="btn-ghost p-1.5 -mr-1.5 min-w-[44px] min-h-[44px]" data-modal-close aria-label="${t('common.close')}">
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
@@ -69,13 +70,13 @@ export function openModal(opts: { title: string; content: HTMLElement; onClose?:
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) close()
   })
-  header.querySelector('[data-modal-close]')?.addEventListener('click', close)
+  const closeBtn = header.querySelector('[data-modal-close]') as HTMLElement
+  closeBtn?.addEventListener('click', close)
   document.addEventListener('keydown', onKeydown)
 
   document.body.style.overflow = 'hidden'
   document.body.appendChild(overlay)
 
-  const closeBtn = header.querySelector('[data-modal-close]') as HTMLElement
   closeBtn?.focus()
 
   return { el: overlay, close }

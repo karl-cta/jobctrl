@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"io/fs"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -12,11 +13,22 @@ import (
 	"job-ctrl/internal/handlers"
 )
 
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func New(db *sql.DB, frontendFS embed.FS, version string) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
+	r.Use(securityHeaders)
 
 	h := handlers.New(db)
 
@@ -53,7 +65,10 @@ func New(db *sql.DB, frontendFS embed.FS, version string) http.Handler {
 		r.Get("/export/csv", h.ExportCSV)
 	})
 
-	sub, _ := fs.Sub(frontendFS, "frontend/dist")
+	sub, err := fs.Sub(frontendFS, "frontend/dist")
+	if err != nil {
+		log.Fatalf("failed to open embedded frontend: %v", err)
+	}
 	fileServer := http.FileServer(http.FS(sub))
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		// Serve static file if it exists, otherwise SPA fallback to index.html

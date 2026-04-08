@@ -403,7 +403,11 @@ const en: Translations = {
   'status.Offer_other': 'Offers',
   'status.Accepted': 'Accepted',
   'status.Rejected': 'Rejected',
+  'status.Rejected_one': 'Rejected',
+  'status.Rejected_other': 'Rejected',
   'status.Withdrawn': 'Withdrawn',
+  'status.Withdrawn_one': 'Withdrawn',
+  'status.Withdrawn_other': 'Withdrawn',
 
   // Common
   'common.page_not_found': 'Page not found',

@@ -159,8 +159,8 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 		args = append(args, statusFilter)
 	}
 	if search != "" {
-		query += " AND (a.company_name LIKE ? OR a.job_title LIKE ? OR a.location LIKE ? OR a.source LIKE ?)"
-		like := "%" + search + "%"
+		query += " AND (a.company_name LIKE ? ESCAPE '\\' OR a.job_title LIKE ? ESCAPE '\\' OR a.location LIKE ? ESCAPE '\\' OR a.source LIKE ? ESCAPE '\\')"
+		like := "%" + escapeLike(search) + "%"
 		args = append(args, like, like, like, like)
 	}
 	sourceFilter := q.Get("source")
@@ -190,8 +190,8 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 		countArgs = append(countArgs, statusFilter)
 	}
 	if search != "" {
-		countQuery += " AND (a.company_name LIKE ? OR a.job_title LIKE ? OR a.location LIKE ? OR a.source LIKE ?)"
-		like := "%" + search + "%"
+		countQuery += " AND (a.company_name LIKE ? ESCAPE '\\' OR a.job_title LIKE ? ESCAPE '\\' OR a.location LIKE ? ESCAPE '\\' OR a.source LIKE ? ESCAPE '\\')"
+		like := "%" + escapeLike(search) + "%"
 		countArgs = append(countArgs, like, like, like, like)
 	}
 	if sourceFilter != "" {
@@ -199,7 +199,11 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 		countArgs = append(countArgs, sourceFilter)
 	}
 	var total int
-	h.db.QueryRowContext(r.Context(), countQuery, countArgs...).Scan(&total)
+	if err := h.db.QueryRowContext(r.Context(), countQuery, countArgs...).Scan(&total); err != nil {
+		log.Printf("ListApplications count: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load applications")
+		return
+	}
 
 	limit, offset := paginationParams(r)
 	query += " LIMIT ? OFFSET ?"
@@ -237,13 +241,13 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 		}
 		apps = append(apps, a)
 	}
-
-	page := 1
-	if v := r.URL.Query().Get("page"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			page = n
-		}
+	if err := rows.Err(); err != nil {
+		log.Printf("ListApplications rows iteration: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load applications")
+		return
 	}
+
+	page := offset/limit + 1
 	totalPages := (total + limit - 1) / limit
 	if totalPages == 0 {
 		totalPages = 1
@@ -274,13 +278,22 @@ func (h *Handler) GetApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	interviews, _ := h.getInterviewsByApplication(r, id)
+	interviews, err := h.getInterviewsByApplication(r, id)
+	if err != nil {
+		log.Printf("GetApplication interviews: %v", err)
+	}
 	a.Interviews = interviews
 
-	contacts, _ := h.getContactsByApplication(r, id)
+	contacts, err := h.getContactsByApplication(r, id)
+	if err != nil {
+		log.Printf("GetApplication contacts: %v", err)
+	}
 	a.Contacts = contacts
 
-	events, _ := h.getTimelineByApplication(r, id)
+	events, err := h.getTimelineByApplication(r, id)
+	if err != nil {
+		log.Printf("GetApplication timeline: %v", err)
+	}
 	a.TimelineEvents = events
 
 	writeJSON(w, http.StatusOK, a)
@@ -409,7 +422,12 @@ func (h *Handler) DeleteApplication(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not delete application")
 		return
 	}
-	n, _ := result.RowsAffected()
+	n, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("DeleteApplication RowsAffected: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not delete application")
+		return
+	}
 	if n == 0 {
 		writeError(w, http.StatusNotFound, "application not found")
 		return
@@ -515,7 +533,12 @@ func (h *Handler) UpdateInterview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update interview")
 		return
 	}
-	n, _ := result.RowsAffected()
+	n, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("UpdateInterview RowsAffected: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not update interview")
+		return
+	}
 	if n == 0 {
 		writeError(w, http.StatusNotFound, "interview not found")
 		return
@@ -527,14 +550,21 @@ func (h *Handler) UpdateInterview(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteInterview(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var appID string
-	h.db.QueryRowContext(r.Context(), `SELECT application_id FROM interviews WHERE id=?`, id).Scan(&appID)
+	if err := h.db.QueryRowContext(r.Context(), `SELECT application_id FROM interviews WHERE id=?`, id).Scan(&appID); err != nil && err != sql.ErrNoRows {
+		log.Printf("DeleteInterview lookup: %v", err)
+	}
 	result, err := h.db.ExecContext(r.Context(), `DELETE FROM interviews WHERE id=?`, id)
 	if err != nil {
 		log.Printf("DeleteInterview: %v", err)
 		writeError(w, http.StatusInternalServerError, "could not delete interview")
 		return
 	}
-	n, _ := result.RowsAffected()
+	n, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("DeleteInterview RowsAffected: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not delete interview")
+		return
+	}
 	if n == 0 {
 		writeError(w, http.StatusNotFound, "interview not found")
 		return
@@ -622,7 +652,12 @@ func (h *Handler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update contact")
 		return
 	}
-	n, _ := result.RowsAffected()
+	n, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("UpdateContact RowsAffected: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not update contact")
+		return
+	}
 	if n == 0 {
 		writeError(w, http.StatusNotFound, "contact not found")
 		return
@@ -634,14 +669,21 @@ func (h *Handler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var appID string
-	h.db.QueryRowContext(r.Context(), `SELECT application_id FROM contacts WHERE id=?`, id).Scan(&appID)
+	if err := h.db.QueryRowContext(r.Context(), `SELECT application_id FROM contacts WHERE id=?`, id).Scan(&appID); err != nil && err != sql.ErrNoRows {
+		log.Printf("DeleteContact lookup: %v", err)
+	}
 	result, err := h.db.ExecContext(r.Context(), `DELETE FROM contacts WHERE id=?`, id)
 	if err != nil {
 		log.Printf("DeleteContact: %v", err)
 		writeError(w, http.StatusInternalServerError, "could not delete contact")
 		return
 	}
-	n, _ := result.RowsAffected()
+	n, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("DeleteContact RowsAffected: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not delete contact")
+		return
+	}
 	if n == 0 {
 		writeError(w, http.StatusNotFound, "contact not found")
 		return
@@ -661,16 +703,22 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 		AvgDaysInStatus: map[string]float64{},
 	}
 
-	h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications`).Scan(&stats.Total)
+	if err := h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications`).Scan(&stats.Total); err != nil {
+		log.Printf("GetStats total: %v", err)
+	}
 
 	// Count by status
-	rows, _ := h.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM applications GROUP BY status`)
-	if rows != nil {
+	if rows, err := h.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM applications GROUP BY status`); err != nil {
+		log.Printf("GetStats byStatus: %v", err)
+	} else {
 		defer rows.Close()
 		for rows.Next() {
 			var status string
 			var count int
-			rows.Scan(&status, &count)
+			if err := rows.Scan(&status, &count); err != nil {
+				log.Printf("GetStats byStatus scan: %v", err)
+				continue
+			}
 			stats.ByStatus[status] = count
 		}
 	}
@@ -690,11 +738,15 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 		stats.OfferRate = float64(offers) / float64(applied) * 100
 	}
 
-	h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications WHERE status IN ('Screening', 'Interviewing')`).Scan(&stats.ActiveInterviews)
+	if err := h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications WHERE status IN ('Screening', 'Interviewing')`).Scan(&stats.ActiveInterviews); err != nil {
+		log.Printf("GetStats activeInterviews: %v", err)
+	}
 
-	h.db.QueryRowContext(ctx, `SELECT AVG(salary) FROM applications WHERE salary IS NOT NULL`).Scan(&stats.AvgSalary)
+	if err := h.db.QueryRowContext(ctx, `SELECT AVG(salary) FROM applications WHERE salary IS NOT NULL`).Scan(&stats.AvgSalary); err != nil {
+		log.Printf("GetStats avgSalary: %v", err)
+	}
 
-	salaryRows, _ := h.db.QueryContext(ctx, `SELECT
+	if salaryRows, err := h.db.QueryContext(ctx, `SELECT
 		CASE
 			WHEN salary < 30000 THEN '< 30k'
 			WHEN salary < 40000 THEN '30-40k'
@@ -708,43 +760,55 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 		END as range_bucket,
 		COUNT(*) as c
 		FROM applications WHERE salary IS NOT NULL
-		GROUP BY range_bucket ORDER BY salary`)
-	if salaryRows != nil {
+		GROUP BY range_bucket ORDER BY salary`); err != nil {
+		log.Printf("GetStats salaryDist: %v", err)
+	} else {
 		defer salaryRows.Close()
 		for salaryRows.Next() {
 			var b models.SalaryBucket
-			salaryRows.Scan(&b.Range, &b.Count)
+			if err := salaryRows.Scan(&b.Range, &b.Count); err != nil {
+				log.Printf("GetStats salaryDist scan: %v", err)
+				continue
+			}
 			stats.SalaryDistribution = append(stats.SalaryDistribution, b)
 		}
 	}
 
-	sourceRows, _ := h.db.QueryContext(ctx, `SELECT source, COUNT(*) as c FROM applications WHERE source IS NOT NULL AND source != '' GROUP BY source ORDER BY c DESC LIMIT 5`)
-	if sourceRows != nil {
+	if sourceRows, err := h.db.QueryContext(ctx, `SELECT source, COUNT(*) as c FROM applications WHERE source IS NOT NULL AND source != '' GROUP BY source ORDER BY c DESC LIMIT 5`); err != nil {
+		log.Printf("GetStats topSources: %v", err)
+	} else {
 		defer sourceRows.Close()
 		for sourceRows.Next() {
 			var sc models.SourceCount
-			sourceRows.Scan(&sc.Source, &sc.Count)
+			if err := sourceRows.Scan(&sc.Source, &sc.Count); err != nil {
+				log.Printf("GetStats topSources scan: %v", err)
+				continue
+			}
 			stats.TopSources = append(stats.TopSources, sc)
 		}
 	}
 
 	// strftime needs plain datetime; strip RFC3339 T and Z from stored values.
-	timeRows, _ := h.db.QueryContext(ctx, `SELECT
+	if timeRows, err := h.db.QueryContext(ctx, `SELECT
 		strftime('%Y-W%W', replace(replace(created_at, 'T', ' '), 'Z', '')) as period,
 		COUNT(*) as c
 		FROM applications
 		WHERE created_at >= datetime('now', '-84 days')
-		GROUP BY period ORDER BY period`)
-	if timeRows != nil {
+		GROUP BY period ORDER BY period`); err != nil {
+		log.Printf("GetStats overTime: %v", err)
+	} else {
 		defer timeRows.Close()
 		for timeRows.Next() {
 			var p models.TimeSeriesPoint
-			timeRows.Scan(&p.Period, &p.Count)
+			if err := timeRows.Scan(&p.Period, &p.Count); err != nil {
+				log.Printf("GetStats overTime scan: %v", err)
+				continue
+			}
 			stats.OverTime = append(stats.OverTime, p)
 		}
 	}
 
-	daysRows, _ := h.db.QueryContext(ctx, `SELECT
+	if daysRows, err := h.db.QueryContext(ctx, `SELECT
 		te1.description,
 		AVG(julianday(replace(replace(te2.created_at, 'T', ' '), 'Z', ''))
 		  - julianday(replace(replace(te1.created_at, 'T', ' '), 'Z', '')))
@@ -753,13 +817,17 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 			AND te2.event_type = 'status_change'
 			AND te2.created_at > te1.created_at
 		WHERE te1.event_type = 'status_change'
-		GROUP BY te1.description`)
-	if daysRows != nil {
+		GROUP BY te1.description`); err != nil {
+		log.Printf("GetStats avgDays: %v", err)
+	} else {
 		defer daysRows.Close()
 		for daysRows.Next() {
 			var desc string
 			var avgDays float64
-			daysRows.Scan(&desc, &avgDays)
+			if err := daysRows.Scan(&desc, &avgDays); err != nil {
+				log.Printf("GetStats avgDays scan: %v", err)
+				continue
+			}
 			// Extract the target status from "Status changed from X to Y"
 			if idx := strings.LastIndex(desc, " to "); idx >= 0 {
 				status := desc[idx+4:]
@@ -812,18 +880,35 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		apps = append(apps, a)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		log.Printf("Export rows iteration: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not export data")
+		return
+	}
 
 	for i := range apps {
-		apps[i].Interviews, _ = h.getInterviewsByApplication(r, apps[i].ID)
-		apps[i].Contacts, _ = h.getContactsByApplication(r, apps[i].ID)
-		apps[i].TimelineEvents, _ = h.getTimelineByApplication(r, apps[i].ID)
+		if iv, err := h.getInterviewsByApplication(r, apps[i].ID); err != nil {
+			log.Printf("Export interviews for %s: %v", apps[i].ID, err)
+		} else {
+			apps[i].Interviews = iv
+		}
+		if ct, err := h.getContactsByApplication(r, apps[i].ID); err != nil {
+			log.Printf("Export contacts for %s: %v", apps[i].ID, err)
+		} else {
+			apps[i].Contacts = ct
+		}
+		if ev, err := h.getTimelineByApplication(r, apps[i].ID); err != nil {
+			log.Printf("Export timeline for %s: %v", apps[i].ID, err)
+		} else {
+			apps[i].TimelineEvents = ev
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"applications": apps, "exported_at": time.Now().UTC()})
 }
 
 func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 50<<20) // 50MB limit
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB limit
 
 	var payload struct {
 		Applications []models.Application `json:"applications"`
@@ -862,7 +947,9 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 		// Duplicate check by ID
 		if a.ID != "" {
 			var exists int
-			h.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM applications WHERE id = ?", a.ID).Scan(&exists)
+			if err := h.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM applications WHERE id = ?", a.ID).Scan(&exists); err != nil {
+				log.Printf("Import duplicate check: %v", err)
+			}
 			if exists > 0 {
 				skipped++
 				continue
@@ -917,12 +1004,14 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 				s := sqliteTime(*iv.ScheduledAt)
 				scheduledStr = &s
 			}
-			h.db.ExecContext(r.Context(), `INSERT INTO interviews
+			if _, err := h.db.ExecContext(r.Context(), `INSERT INTO interviews
 				(id, application_id, round, type, scheduled_at, duration_minutes, interviewer_name,
 				interviewer_role, notes, prep_notes, outcome, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 				iv.ID, iv.ApplicationID, iv.Round, iv.Type, scheduledStr, iv.DurationMinutes,
 				iv.InterviewerName, iv.InterviewerRole, iv.Notes, iv.PrepNotes, iv.Outcome, sqliteTime(iv.CreatedAt),
-			)
+			); err != nil {
+				log.Printf("Import interview: %v", err)
+			}
 		}
 
 		// Import contacts
@@ -937,10 +1026,12 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 			if validateContact(&c) != nil {
 				continue
 			}
-			h.db.ExecContext(r.Context(), `INSERT INTO contacts
+			if _, err := h.db.ExecContext(r.Context(), `INSERT INTO contacts
 				(id, application_id, name, role, email, phone, linkedin, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
 				c.ID, c.ApplicationID, c.Name, c.Role, c.Email, c.Phone, c.LinkedIn, c.Notes, sqliteTime(c.CreatedAt),
-			)
+			); err != nil {
+				log.Printf("Import contact: %v", err)
+			}
 		}
 
 		// Import timeline events
@@ -952,10 +1043,12 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 			if e.CreatedAt.IsZero() {
 				e.CreatedAt = now
 			}
-			h.db.ExecContext(r.Context(), `INSERT INTO timeline_events
+			if _, err := h.db.ExecContext(r.Context(), `INSERT INTO timeline_events
 				(id, application_id, event_type, description, created_at) VALUES (?,?,?,?,?)`,
 				e.ID, e.ApplicationID, e.EventType, e.Description, sqliteTime(e.CreatedAt),
-			)
+			); err != nil {
+				log.Printf("Import timeline event: %v", err)
+			}
 		}
 
 		imported++
@@ -990,6 +1083,11 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 		apps = append(apps, a)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		log.Printf("ExportCSV rows iteration: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not export data")
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="jobctrl-export.csv"`)
@@ -1010,16 +1108,29 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 
 	for _, a := range apps {
 		cw.Write([]string{
-			a.CompanyName, ptrStr(a.CompanyWebsite), ptrStr(a.CompanyIndustry),
-			ptrStr(a.CompanySize), ptrStr(a.CompanyLocation),
-			a.JobTitle, ptrStr(a.JobURL), string(a.ContractType), ptrIntStr(a.ContractDuration),
-			string(a.WorkMode), ptrStr(a.Location),
+			csvSafe(a.CompanyName), csvSafe(ptrStr(a.CompanyWebsite)), csvSafe(ptrStr(a.CompanyIndustry)),
+			csvSafe(ptrStr(a.CompanySize)), csvSafe(ptrStr(a.CompanyLocation)),
+			csvSafe(a.JobTitle), csvSafe(ptrStr(a.JobURL)), string(a.ContractType), ptrIntStr(a.ContractDuration),
+			string(a.WorkMode), csvSafe(ptrStr(a.Location)),
 			ptrIntStr(a.Salary), string(a.Status),
-			ptrTimeStr(a.AppliedAt), ptrStr(a.Source),
+			ptrTimeStr(a.AppliedAt), csvSafe(ptrStr(a.Source)),
 			ptrIntStr(a.Rating), ptrIntStr(a.Confidence),
 			a.CreatedAt.Format("2006-01-02"),
 		})
 	}
+}
+
+// csvSafe prefixes strings starting with formula-trigger characters to prevent
+// CSV injection when opened in spreadsheet applications.
+func csvSafe(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
+	}
+	return s
 }
 
 func ptrStr(s *string) string {
@@ -1072,12 +1183,14 @@ func (h *Handler) getInterviewsByApplication(r *http.Request, appID string) ([]m
 	var list []models.Interview
 	for rows.Next() {
 		var iv models.Interview
-		rows.Scan(&iv.ID, &iv.ApplicationID, &iv.Round, &iv.Type, &iv.ScheduledAt,
+		if err := rows.Scan(&iv.ID, &iv.ApplicationID, &iv.Round, &iv.Type, &iv.ScheduledAt,
 			&iv.DurationMinutes, &iv.InterviewerName, &iv.InterviewerRole, &iv.Notes,
-			&iv.PrepNotes, &iv.Outcome, &iv.CreatedAt)
+			&iv.PrepNotes, &iv.Outcome, &iv.CreatedAt); err != nil {
+			return list, fmt.Errorf("scan interview: %w", err)
+		}
 		list = append(list, iv)
 	}
-	return list, nil
+	return list, rows.Err()
 }
 
 func (h *Handler) getContactsByApplication(r *http.Request, appID string) ([]models.Contact, error) {
@@ -1091,10 +1204,12 @@ func (h *Handler) getContactsByApplication(r *http.Request, appID string) ([]mod
 	var list []models.Contact
 	for rows.Next() {
 		var c models.Contact
-		rows.Scan(&c.ID, &c.ApplicationID, &c.Name, &c.Role, &c.Email, &c.Phone, &c.LinkedIn, &c.Notes, &c.CreatedAt)
+		if err := rows.Scan(&c.ID, &c.ApplicationID, &c.Name, &c.Role, &c.Email, &c.Phone, &c.LinkedIn, &c.Notes, &c.CreatedAt); err != nil {
+			return list, fmt.Errorf("scan contact: %w", err)
+		}
 		list = append(list, c)
 	}
-	return list, nil
+	return list, rows.Err()
 }
 
 func (h *Handler) getTimelineByApplication(r *http.Request, appID string) ([]models.TimelineEvent, error) {
@@ -1108,15 +1223,19 @@ func (h *Handler) getTimelineByApplication(r *http.Request, appID string) ([]mod
 	var list []models.TimelineEvent
 	for rows.Next() {
 		var e models.TimelineEvent
-		rows.Scan(&e.ID, &e.ApplicationID, &e.EventType, &e.Description, &e.CreatedAt)
+		if err := rows.Scan(&e.ID, &e.ApplicationID, &e.EventType, &e.Description, &e.CreatedAt); err != nil {
+			return list, fmt.Errorf("scan timeline event: %w", err)
+		}
 		list = append(list, e)
 	}
-	return list, nil
+	return list, rows.Err()
 }
 
 func (h *Handler) addTimelineEvent(r *http.Request, appID, eventType, desc string) {
-	h.db.ExecContext(r.Context(), `INSERT INTO timeline_events (id, application_id, event_type, description, created_at) VALUES (?,?,?,?,?)`,
-		uuid.New().String(), appID, eventType, desc, sqliteTime(time.Now().UTC()))
+	if _, err := h.db.ExecContext(r.Context(), `INSERT INTO timeline_events (id, application_id, event_type, description, created_at) VALUES (?,?,?,?,?)`,
+		uuid.New().String(), appID, eventType, desc, sqliteTime(time.Now().UTC())); err != nil {
+		log.Printf("addTimelineEvent: %v", err)
+	}
 }
 
 func (h *Handler) ExtractFromURL(w http.ResponseWriter, r *http.Request) {
@@ -1135,6 +1254,13 @@ func (h *Handler) ExtractFromURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
 }
 
 func sqliteTime(t time.Time) string {

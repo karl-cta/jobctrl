@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -38,11 +39,42 @@ var httpClient = &http.Client{
 	},
 }
 
+// isPrivateIP returns true if the IP belongs to a private/reserved range.
+func isPrivateIP(ip net.IP) bool {
+	privateRanges := []string{
+		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+		"127.0.0.0/8", "169.254.0.0/16", "::1/128", "fc00::/7", "fe80::/10",
+	}
+	for _, cidr := range privateRanges {
+		_, network, _ := net.ParseCIDR(cidr)
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
+}
+
 // FromURL fetches the given URL and extracts job posting data.
 func FromURL(rawURL string) (*Result, error) {
+	if len(rawURL) > 2048 {
+		return nil, fmt.Errorf("URL too long")
+	}
+
 	parsed, err := url.Parse(rawURL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return nil, fmt.Errorf("invalid URL")
+	}
+
+	// SSRF protection: resolve hostname and block private/reserved IPs
+	hostname := parsed.Hostname()
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve hostname")
+	}
+	for _, ip := range ips {
+		if isPrivateIP(ip) {
+			return nil, fmt.Errorf("URL points to a private network")
+		}
 	}
 
 	result := &Result{}
