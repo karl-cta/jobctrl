@@ -526,6 +526,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   if (app.work_mode) details.push({ label: t('detail.mode'), value: app.work_mode })
   if (app.salary) details.push({ label: t('detail.salary'), value: `${app.salary / 1000}k \u20ac` })
   if (app.applied_at) details.push({ label: t('detail.applied_at'), value: new Date(app.applied_at).toLocaleDateString(dateFmt) })
+  details.push({ label: t('detail.created_at'), value: new Date(app.created_at).toLocaleDateString(dateFmt) })
   if (app.source) {
     const srcDomain = getSourceDomain(app.source)
     const srcIcon = srcDomain
@@ -537,7 +538,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   if (details.length) {
     const detailsRow = document.createElement('div')
-    detailsRow.className = 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-y-5 gap-x-6 py-6 border-t border-b border-border/50'
+    const colCount = Math.min(details.length, 7)
+    detailsRow.className = `grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-${colCount} gap-y-5 gap-x-5 py-6 border-t border-b border-border/50`
     details.forEach(d => {
       const item = document.createElement('div')
       const icon = d.iconHtml || ''

@@ -105,7 +105,7 @@ export async function ListPage(): Promise<HTMLElement> {
               ${app.confidence ? confidenceMeter(app.confidence) : ''}
               ${app.location ? `<span class="text-xs text-muted flex items-center gap-1"><span aria-hidden="true" class="opacity-60">${icons.pin}</span> ${esc(app.location)}</span>` : ''}
               ${app.salary ? `<span class="text-xs text-muted tabular-nums font-medium">${app.salary / 1000}k \u20ac</span>` : ''}
-              <span class="text-xs text-muted/60 tabular-nums">${new Date(app.created_at).toLocaleDateString(getDateLocale())}</span>
+              ${app.applied_at ? `<span class="text-xs text-muted/60 tabular-nums">${new Date(app.applied_at).toLocaleDateString(getDateLocale())}</span>` : ''}
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
