@@ -542,12 +542,13 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     detailsRow.className = `grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-${colCount} gap-y-5 gap-x-5 py-6 border-t border-b border-border/50`
     details.forEach(d => {
       const item = document.createElement('div')
+      item.className = 'min-w-0'
       const icon = d.iconHtml || ''
       item.innerHTML = d.href
         ? `<span class="block text-xs text-muted/60 uppercase tracking-wider font-medium mb-1">${esc(d.label)}</span>
-           <a href="${esc(d.href)}" target="_blank" rel="noopener noreferrer" class="text-sm text-accent hover:text-accent-hover font-medium transition-colors inline-flex items-center gap-1">${esc(d.value)}</a>`
+           <a href="${esc(d.href)}" target="_blank" rel="noopener noreferrer" class="text-sm text-accent hover:text-accent-hover font-medium transition-colors inline-flex items-center gap-1 max-w-full truncate">${esc(d.value)}</a>`
         : `<span class="block text-xs text-muted/60 uppercase tracking-wider font-medium mb-1">${esc(d.label)}</span>
-           <span class="flex items-center gap-2 text-sm text-primary font-medium">${icon}${esc(d.value)}</span>`
+           <span class="flex items-center gap-2 text-sm text-primary font-medium truncate">${icon}<span class="truncate">${esc(d.value)}</span></span>`
       detailsRow.appendChild(item)
     })
     content.appendChild(detailsRow)
