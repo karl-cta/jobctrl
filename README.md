@@ -16,17 +16,23 @@
 </p>
 
 <p align="center">
-  <img src=".github/jobctrl-dashboard.png" alt="JobCtrl Dashboard" />
+  <img src=".github/jobctrl-demo.gif" alt="JobCtrl Demo" />
 </p>
 
 ## Features
 
-- **Full application tracking** — status pipeline, interviews, contacts, timeline
-- **Auto-fill from URL** — paste a job listing URL, fields are extracted automatically (JSON-LD / Open Graph)
-- **Dashboard** — stats, pipeline view, charts
-- **Bilingual** — French & English
-- **Dark mode** — warm stone palette, no pure black
-- **Self-hosted** — your data stays on your machine, single binary, no accounts
+- **Full pipeline tracking** with statuses from Wishlist to Accepted, interviews, contacts, and timeline
+- **Auto-fill from URL** by pasting a job listing link (extracts company, title, salary via JSON-LD / Open Graph)
+- **Dashboard** with stats, pipeline visualization, charts, top sources, and follow-up reminders
+- **Follow-up reminders** for applications with no response after an interview (snooze or dismiss)
+- **Duplicate detection** warns you when applying to a company you've already contacted
+- **Bulk actions** to change status or delete multiple applications at once
+- **Sort and filter** by date, company, status, confidence, interest, and source
+- **Table and Kanban views** with pagination
+- **JSON backup and restore** plus CSV export for spreadsheets
+- **Bilingual** French and English
+- **Dark mode** with warm stone palette
+- **Self-hosted** with your data on your machine, no accounts, no cloud
 
 ## Quick start
 
@@ -36,11 +42,11 @@
 docker compose up -d
 ```
 
-Open [http://localhost:8080](http://localhost:8080). Data is persisted in a Docker volume (`job-ctrl-data`).
+Open [http://localhost:8080](http://localhost:8080). Data is persisted in a Docker volume.
 
 ### From source
 
-Requires Go 1.26+, Node.js 22+
+Requires Go 1.26+ and Node.js 22+.
 
 ```bash
 git clone https://github.com/karl-cta/jobctrl.git
@@ -60,25 +66,9 @@ make build     # frontend + Go binary
 ## Development
 
 ```bash
-make dev       # Go :8080 + Vite :5173 with hot reload
-go test ./...  # tests
+make dev       # Go + Vite hot reload
+go test ./...  # backend tests
 ```
-
-## API
-
-All routes under `/api`, JSON responses.
-
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET` | `/applications` | List (filters: `status`, `search`, `sort`) |
-| `POST` | `/applications` | Create |
-| `GET/PUT/DELETE` | `/applications/:id` | Read / update / delete |
-| `POST` | `/extract` | Auto-fill from job URL |
-| `GET/POST` | `/applications/:id/interviews` | Interviews |
-| `GET/POST` | `/applications/:id/contacts` | Contacts |
-| `GET` | `/stats` | Dashboard stats |
-| `GET` | `/export` | Full JSON export |
-| `GET` | `/health` | Health check |
 
 ## Stack
 
