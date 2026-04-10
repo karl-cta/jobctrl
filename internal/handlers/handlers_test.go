@@ -42,6 +42,7 @@ func newTestServer(t *testing.T) *testServer {
 	r.Get("/api/applications/stats", h.GetStats)
 	r.Get("/api/applications", h.ListApplications)
 	r.Post("/api/applications", h.CreateApplication)
+	r.Get("/api/applications/duplicates", h.CheckDuplicates)
 	r.Get("/api/applications/{id}", h.GetApplication)
 	r.Put("/api/applications/{id}", h.UpdateApplication)
 	r.Put("/api/applications/{id}/snooze", h.SnoozeFollowUp)
@@ -1305,5 +1306,54 @@ func TestStats_FollowUps_SnoozedExcluded(t *testing.T) {
 	stats := decode[models.Stats](t, w)
 	if len(stats.FollowUps) != 0 {
 		t.Errorf("expected 0 follow-ups after snooze, got %d", len(stats.FollowUps))
+	}
+}
+
+// --- Duplicate detection tests ---
+
+func TestCheckDuplicates_NoMatch(t *testing.T) {
+	ts := newTestServer(t)
+	createApp(t, ts, map[string]any{"company_name": "Acme Corp"})
+	w := ts.do(t, "GET", "/api/applications/duplicates?company_name=NonExistent", nil)
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var results []map[string]any
+	json.NewDecoder(w.Body).Decode(&results)
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestCheckDuplicates_CaseInsensitive(t *testing.T) {
+	ts := newTestServer(t)
+	createApp(t, ts, map[string]any{"company_name": "Acme Corp", "job_title": "Dev"})
+	w := ts.do(t, "GET", "/api/applications/duplicates?company_name=acme+corp", nil)
+	var results []map[string]any
+	json.NewDecoder(w.Body).Decode(&results)
+	if len(results) != 1 {
+		t.Errorf("expected 1 result (case-insensitive), got %d", len(results))
+	}
+}
+
+func TestCheckDuplicates_Multiple(t *testing.T) {
+	ts := newTestServer(t)
+	createApp(t, ts, map[string]any{"company_name": "Google", "job_title": "SRE"})
+	createApp(t, ts, map[string]any{"company_name": "Google", "job_title": "SWE"})
+	w := ts.do(t, "GET", "/api/applications/duplicates?company_name=Google", nil)
+	var results []map[string]any
+	json.NewDecoder(w.Body).Decode(&results)
+	if len(results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(results))
+	}
+}
+
+func TestCheckDuplicates_EmptyParam(t *testing.T) {
+	ts := newTestServer(t)
+	w := ts.do(t, "GET", "/api/applications/duplicates?company_name=", nil)
+	var results []map[string]any
+	json.NewDecoder(w.Body).Decode(&results)
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for empty param, got %d", len(results))
 	}
 }

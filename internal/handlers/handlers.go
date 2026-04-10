@@ -906,6 +906,43 @@ func (h *Handler) SnoozeFollowUp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (h *Handler) CheckDuplicates(w http.ResponseWriter, r *http.Request) {
+	companyName := strings.TrimSpace(r.URL.Query().Get("company_name"))
+	if companyName == "" {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+
+	rows, err := h.db.QueryContext(r.Context(),
+		`SELECT id, company_name, job_title, status, created_at FROM applications WHERE LOWER(company_name) = LOWER(?)`,
+		companyName)
+	if err != nil {
+		log.Printf("CheckDuplicates: %v", err)
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+	defer rows.Close()
+
+	type dupResult struct {
+		ID          string `json:"id"`
+		CompanyName string `json:"company_name"`
+		JobTitle    string `json:"job_title"`
+		Status      string `json:"status"`
+		CreatedAt   string `json:"created_at"`
+	}
+	var results []dupResult
+	for rows.Next() {
+		var d dupResult
+		if err := rows.Scan(&d.ID, &d.CompanyName, &d.JobTitle, &d.Status, &d.CreatedAt); err == nil {
+			results = append(results, d)
+		}
+	}
+	if results == nil {
+		results = []dupResult{}
+	}
+	writeJSON(w, http.StatusOK, results)
+}
+
 func (h *Handler) ListSources(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.QueryContext(r.Context(),
 		`SELECT DISTINCT source FROM applications WHERE source IS NOT NULL AND source != '' ORDER BY source`)

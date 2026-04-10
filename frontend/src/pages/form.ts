@@ -5,7 +5,9 @@ import { t } from '../i18n'
 import { icons } from '../icons'
 import { toast } from '../components/toast'
 import { esc } from '../sanitize'
-import { ALL_STATUSES, statusLabel, type Application } from '../types'
+import { ALL_STATUSES, statusLabel, type Application, type ApplicationStatus } from '../types'
+import { openModal } from '../components/modal'
+import { getDateLocale } from '../i18n'
 import { setupSourceAutocomplete } from '../components/source-autocomplete'
 
 export async function FormPage(id?: string): Promise<HTMLElement> {
@@ -395,6 +397,42 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       speech: data.speech || undefined,
       rating: data.rating ? Number(data.rating) : undefined,
       confidence: data.confidence ? Number(data.confidence) : undefined,
+    }
+
+    // Duplicate check (new applications only)
+    if (!isEdit && payload.company_name) {
+      try {
+        const duplicates = await api.applications.checkDuplicates(payload.company_name)
+        if (duplicates.length > 0) {
+          const shouldProceed = await new Promise<boolean>((resolve) => {
+            const body = document.createElement('div')
+            body.className = 'space-y-4'
+            body.innerHTML = `
+              <p class="text-sm text-muted">${t('form.duplicate_message')}</p>
+              <div class="space-y-2">
+                ${duplicates.map(d => {
+                  const dateStr = new Date(d.created_at.replace(' ', 'T')).toLocaleDateString(getDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' })
+                  return `<div class="p-3 rounded border border-border bg-surface-2/30">
+                    <div class="text-sm font-medium text-primary">${esc(d.job_title)}</div>
+                    <div class="text-xs text-muted mt-0.5">${statusLabel(d.status as ApplicationStatus)} · ${dateStr}</div>
+                  </div>`
+                }).join('')}
+              </div>
+              <div class="flex gap-3 justify-end pt-2">
+                <button id="dup-cancel" class="btn-ghost min-h-[44px]">${t('form.duplicate_cancel')}</button>
+                <button id="dup-create" class="btn-primary min-h-[44px]">${t('form.duplicate_create')}</button>
+              </div>
+            `
+            const { close } = openModal({ title: t('form.duplicate_title'), content: body, onClose: () => resolve(false) })
+            body.querySelector('#dup-cancel')?.addEventListener('click', () => { close(); resolve(false) })
+            body.querySelector('#dup-create')?.addEventListener('click', () => { close(); resolve(true) })
+          })
+          if (!shouldProceed) {
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = t('form.create') }
+            return
+          }
+        }
+      } catch { /* duplicate check failed — proceed with creation */ }
     }
 
     try {

@@ -35,6 +35,9 @@ export const api = {
     delete: (id: string) => request<void>(`/applications/${id}`, { method: 'DELETE' }),
     snooze: (id: string, data: { until?: string; skip?: boolean }) =>
       request<{ status: string }>(`/applications/${id}/snooze`, { method: 'PUT', body: JSON.stringify(data) }),
+    checkDuplicates: (companyName: string) =>
+      request<Array<{ id: string; company_name: string; job_title: string; status: string; created_at: string }>>(
+        `/applications/duplicates?company_name=${encodeURIComponent(companyName)}`),
   },
   interviews: {
     list: (appId: string) => request<Interview[]>(`/applications/${appId}/interviews`),
