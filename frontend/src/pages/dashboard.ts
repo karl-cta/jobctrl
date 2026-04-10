@@ -191,6 +191,41 @@ export async function DashboardPage(): Promise<HTMLElement> {
       }).join('')}
     </div>
 
+    ${stats?.follow_ups?.length ? `
+    <div class="card border-amber-500/20 dark:border-amber-400/15">
+      <div class="flex items-start gap-3 mb-5">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-amber-500 mt-0.5 shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+        <div>
+          <h2 class="text-sm font-semibold text-primary">${t('dashboard.follow_ups_title')}</h2>
+          <p class="text-xs text-muted mt-0.5">${t('dashboard.follow_ups_desc')}</p>
+        </div>
+      </div>
+      <div class="space-y-3" id="follow-up-list">
+        ${stats.follow_ups.map(f => {
+          const ivDate = f.last_interview_at ? new Date(f.last_interview_at.replace(' ', 'T')) : null
+          const daysAgo = ivDate ? Math.floor((Date.now() - ivDate.getTime()) / 86400000) : 0
+          return `
+          <div class="rounded border border-border/60 p-4" data-follow-up-id="${f.id}">
+            <div class="flex items-start justify-between gap-3 mb-3">
+              <a href="/applications/${f.id}" data-link class="flex-1 min-w-0 no-underline group">
+                <span class="text-sm font-semibold text-primary group-hover:text-accent transition-colors block">${esc(f.company_name)}</span>
+                <span class="text-sm text-muted block mt-0.5">${esc(f.job_title)}</span>
+              </a>
+              <span class="text-xs text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">${t('dashboard.follow_up_days_ago').replace('{days}', String(daysAgo))}</span>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs text-muted mr-auto">${t('dashboard.follow_up_remind_later')}</span>
+              <button data-snooze-id="${f.id}" data-snooze-days="7" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors">${t('dashboard.follow_up_snooze_1w')}</button>
+              <button data-snooze-id="${f.id}" data-snooze-days="14" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors hidden sm:block">${t('dashboard.follow_up_snooze_2w')}</button>
+              <button data-snooze-id="${f.id}" data-snooze-days="21" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors hidden sm:block">${t('dashboard.follow_up_snooze_3w')}</button>
+              <button data-skip-id="${f.id}" class="text-xs px-3 py-2 rounded-full border border-border text-muted/50 hover:text-rose-500 hover:border-rose-300 dark:hover:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">${t('dashboard.follow_up_skip')}</button>
+            </div>
+          </div>`
+        }).join('')}
+      </div>
+    </div>
+    ` : ''}
+
     <div>
       <h2 class="text-sm font-semibold text-primary mb-5">${t('dashboard.pipeline')}</h2>
       ${total > 0 ? `
@@ -314,6 +349,45 @@ export async function DashboardPage(): Promise<HTMLElement> {
     } finally {
       importFile.value = ''
     }
+  })
+
+  // Follow-up snooze/skip
+  const dismissFollowUp = (appId: string) => {
+    const card = content.querySelector(`[data-follow-up-id="${appId}"]`) as HTMLElement
+    if (!card) return
+    card.style.opacity = '0'
+    card.style.transform = 'translateX(20px)'
+    card.style.transition = 'opacity 0.2s ease, transform 0.2s ease'
+    setTimeout(() => {
+      card.remove()
+      const list = content.querySelector('#follow-up-list')
+      if (list && list.children.length === 0) {
+        list.closest('.card')?.remove()
+      }
+    }, 200)
+  }
+  content.querySelectorAll<HTMLButtonElement>('[data-snooze-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const appId = btn.dataset.snoozeId!
+      const days = Number(btn.dataset.snoozeDays)
+      const until = new Date()
+      until.setDate(until.getDate() + days)
+      try {
+        await api.applications.snooze(appId, { until: until.toISOString().slice(0, 10) })
+        dismissFollowUp(appId)
+        toast(t('dashboard.follow_up_snoozed'), 'success')
+      } catch { toast(t('form.error'), 'error') }
+    })
+  })
+  content.querySelectorAll<HTMLButtonElement>('[data-skip-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const appId = btn.dataset.skipId!
+      try {
+        await api.applications.snooze(appId, { skip: true })
+        dismissFollowUp(appId)
+        toast(t('dashboard.follow_up_skipped'), 'info')
+      } catch { toast(t('form.error'), 'error') }
+    })
   })
 
   requestAnimationFrame(() => {

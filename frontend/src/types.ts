@@ -91,6 +91,15 @@ export interface Stats {
   top_sources: Array<{ source: string; count: number }>
   over_time?: Array<{ period: string; count: number }>
   avg_days_in_status?: Record<string, number>
+  follow_ups?: FollowUpItem[]
+}
+
+export interface FollowUpItem {
+  id: string
+  company_name: string
+  job_title: string
+  status: string
+  last_interview_at: string
 }
 
 export interface PaginatedResponse<T> {

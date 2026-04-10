@@ -42,6 +42,7 @@ func New(db *sql.DB, frontendFS embed.FS, version string) http.Handler {
 		r.Post("/applications", h.CreateApplication)
 		r.Get("/applications/{id}", h.GetApplication)
 		r.Put("/applications/{id}", h.UpdateApplication)
+		r.Put("/applications/{id}/snooze", h.SnoozeFollowUp)
 		r.Delete("/applications/{id}", h.DeleteApplication)
 
 		r.Get("/applications/{id}/interviews", h.ListInterviews)

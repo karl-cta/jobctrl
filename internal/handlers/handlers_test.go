@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -43,6 +44,7 @@ func newTestServer(t *testing.T) *testServer {
 	r.Post("/api/applications", h.CreateApplication)
 	r.Get("/api/applications/{id}", h.GetApplication)
 	r.Put("/api/applications/{id}", h.UpdateApplication)
+	r.Put("/api/applications/{id}/snooze", h.SnoozeFollowUp)
 	r.Delete("/api/applications/{id}", h.DeleteApplication)
 	r.Get("/api/applications/{id}/interviews", h.ListInterviews)
 	r.Post("/api/applications/{id}/interviews", h.CreateInterview)
@@ -1220,5 +1222,88 @@ func TestExportCSV_SpecialChars(t *testing.T) {
 	body := w.Body.String()[3:] // skip BOM
 	if !strings.Contains(body, `"Acme, Inc. ""Best"""`) {
 		t.Errorf("CSV escaping failed, got: %s", body)
+	}
+}
+
+// --- Snooze / Follow-up tests ---
+
+func TestSnoozeFollowUp(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Interviewing"})
+
+	w := ts.do(t, "PUT", "/api/applications/"+app.ID+"/snooze", map[string]any{
+		"until": "2099-01-01",
+	})
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	detail := ts.do(t, "GET", "/api/applications/"+app.ID, nil)
+	got := decode[models.Application](t, detail)
+	if got.FollowUpSnoozedUntil == nil {
+		t.Error("expected follow_up_snoozed_until to be set")
+	}
+}
+
+func TestSnoozeFollowUp_Skip(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Screening"})
+
+	w := ts.do(t, "PUT", "/api/applications/"+app.ID+"/snooze", map[string]any{"skip": true})
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSnoozeFollowUp_NotFound(t *testing.T) {
+	ts := newTestServer(t)
+	w := ts.do(t, "PUT", "/api/applications/nonexistent/snooze", map[string]any{"skip": true})
+	if w.Code != 404 {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestSnoozeFollowUp_InvalidBody(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Interviewing"})
+	w := ts.do(t, "PUT", "/api/applications/"+app.ID+"/snooze", map[string]any{})
+	if w.Code != 400 {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestStats_FollowUps(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Interviewing"})
+
+	// Add interview scheduled 15 days ago
+	ts.do(t, "POST", "/api/applications/"+app.ID+"/interviews", map[string]any{
+		"round": 1, "type": "Phone",
+		"scheduled_at": time.Now().AddDate(0, 0, -15).Format(time.RFC3339),
+	})
+
+	w := ts.do(t, "GET", "/api/stats", nil)
+	stats := decode[models.Stats](t, w)
+	if len(stats.FollowUps) != 1 {
+		t.Errorf("expected 1 follow-up, got %d", len(stats.FollowUps))
+	}
+}
+
+func TestStats_FollowUps_SnoozedExcluded(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Interviewing"})
+
+	ts.do(t, "POST", "/api/applications/"+app.ID+"/interviews", map[string]any{
+		"round": 1, "type": "Phone",
+		"scheduled_at": time.Now().AddDate(0, 0, -15).Format(time.RFC3339),
+	})
+
+	// Snooze it
+	ts.do(t, "PUT", "/api/applications/"+app.ID+"/snooze", map[string]any{"until": "2099-01-01"})
+
+	w := ts.do(t, "GET", "/api/stats", nil)
+	stats := decode[models.Stats](t, w)
+	if len(stats.FollowUps) != 0 {
+		t.Errorf("expected 0 follow-ups after snooze, got %d", len(stats.FollowUps))
 	}
 }

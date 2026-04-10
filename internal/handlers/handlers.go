@@ -148,7 +148,7 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT a.id, a.company_name, a.company_website, a.company_industry, a.company_size,
 		a.company_location, a.job_title, a.job_url, a.job_description, a.contract_type, a.contract_duration, a.work_mode,
 		a.location, a.salary, a.salary_currency, a.status, a.applied_at, a.source,
-		a.notes, a.speech, a.rating, a.confidence, a.created_at, a.updated_at,
+		a.notes, a.speech, a.rating, a.confidence, a.created_at, a.updated_at, a.follow_up_snoozed_until,
 		(SELECT COUNT(*) FROM interviews WHERE application_id = a.id) as interview_count,
 		(SELECT COUNT(*) FROM contacts WHERE application_id = a.id) as contact_count
 		FROM applications a WHERE 1=1`
@@ -232,7 +232,7 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 			&a.ContractType, &a.ContractDuration, &a.WorkMode, &a.Location,
 			&a.Salary, &a.SalaryCurrency, &a.Status,
 			&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating, &a.Confidence,
-			&a.CreatedAt, &a.UpdatedAt,
+			&a.CreatedAt, &a.UpdatedAt, &a.FollowUpSnoozedUntil,
 			&a.InterviewCount, &a.ContactCount,
 		); err != nil {
 			log.Printf("ListApplications scan: %v", err)
@@ -268,7 +268,7 @@ func (h *Handler) GetApplication(w http.ResponseWriter, r *http.Request) {
 	row := h.db.QueryRowContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
 		company_size, company_location, job_title, job_url, job_description, contract_type, contract_duration, work_mode,
 		location, salary, salary_currency, status, applied_at, source,
-		notes, speech, rating, confidence, created_at, updated_at FROM applications WHERE id = ?`, id)
+		notes, speech, rating, confidence, created_at, updated_at, follow_up_snoozed_until FROM applications WHERE id = ?`, id)
 	if err := scanApplication(row, &a); err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "application not found")
 		return
@@ -337,11 +337,11 @@ func (h *Handler) CreateApplication(w http.ResponseWriter, r *http.Request) {
 		(id, company_name, company_website, company_industry, company_size, company_location,
 		job_title, job_url, job_description, contract_type, contract_duration, work_mode, location,
 		salary, salary_currency, status, applied_at, source, notes, speech, rating, confidence,
-		created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		created_at, updated_at, follow_up_snoozed_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		a.ID, a.CompanyName, a.CompanyWebsite, a.CompanyIndustry, a.CompanySize, a.CompanyLocation,
 		a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.ContractDuration, a.WorkMode, a.Location,
 		a.Salary, a.SalaryCurrency, a.Status, appliedAtStr, a.Source, a.Notes, a.Speech, a.Rating, a.Confidence,
-		sqliteTime(a.CreatedAt), sqliteTime(a.UpdatedAt),
+		sqliteTime(a.CreatedAt), sqliteTime(a.UpdatedAt), nil,
 	)
 	if err != nil {
 		log.Printf("CreateApplication: %v", err)
@@ -836,7 +836,74 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Follow-up reminders: interviews > 10 days ago with no status change
+	nowStr := sqliteTime(time.Now().UTC())
+	tenDaysAgo := sqliteTime(time.Now().UTC().AddDate(0, 0, -10))
+	if fuRows, err := h.db.QueryContext(r.Context(), `SELECT a.id, a.company_name, a.job_title, a.status, MAX(i.scheduled_at) as last_iv
+		FROM applications a JOIN interviews i ON i.application_id = a.id
+		WHERE a.status IN ('Screening', 'Interviewing')
+		  AND (a.follow_up_snoozed_until IS NULL OR a.follow_up_snoozed_until < ?)
+		  AND i.scheduled_at IS NOT NULL
+		GROUP BY a.id
+		HAVING MAX(replace(i.scheduled_at, 'T', ' ')) < ?`, nowStr, tenDaysAgo); err == nil {
+		defer fuRows.Close()
+		for fuRows.Next() {
+			var item models.FollowUpItem
+			if err := fuRows.Scan(&item.ID, &item.CompanyName, &item.JobTitle, &item.Status, &item.LastInterviewAt); err == nil {
+				stats.FollowUps = append(stats.FollowUps, item)
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, stats)
+}
+
+func (h *Handler) SnoozeFollowUp(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var body struct {
+		Until *string `json:"until"`
+		Skip  bool    `json:"skip"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	var snoozedUntil string
+	if body.Skip {
+		snoozedUntil = "9999-12-31 23:59:59"
+	} else if body.Until != nil {
+		t, err := time.Parse("2006-01-02", *body.Until)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid date format, expected YYYY-MM-DD")
+			return
+		}
+		if t.Before(time.Now().UTC()) {
+			writeError(w, http.StatusBadRequest, "snooze date must be in the future")
+			return
+		}
+		snoozedUntil = sqliteTime(t)
+	} else {
+		writeError(w, http.StatusBadRequest, "must provide 'until' date or 'skip: true'")
+		return
+	}
+
+	result, err := h.db.ExecContext(r.Context(),
+		`UPDATE applications SET follow_up_snoozed_until = ?, updated_at = ? WHERE id = ?`,
+		snoozedUntil, sqliteTime(time.Now().UTC()), id)
+	if err != nil {
+		log.Printf("SnoozeFollowUp: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not update application")
+		return
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		writeError(w, http.StatusNotFound, "application not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *Handler) ListSources(w http.ResponseWriter, r *http.Request) {
@@ -862,7 +929,7 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.QueryContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
 		company_size, company_location, job_title, job_url, job_description, contract_type, contract_duration, work_mode,
 		location, salary, salary_currency, status, applied_at, source,
-		notes, speech, rating, confidence, created_at, updated_at FROM applications ORDER BY created_at`)
+		notes, speech, rating, confidence, created_at, updated_at, follow_up_snoozed_until FROM applications ORDER BY created_at`)
 	if err != nil {
 		log.Printf("Export query: %v", err)
 		writeError(w, http.StatusInternalServerError, "could not export data")
@@ -972,15 +1039,16 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 			appliedAtStr = &s
 		}
 
+		snoozedStr := a.FollowUpSnoozedUntil
 		_, err := h.db.ExecContext(r.Context(), `INSERT INTO applications
 			(id, company_name, company_website, company_industry, company_size, company_location,
 			job_title, job_url, job_description, contract_type, contract_duration, work_mode, location,
 			salary, salary_currency, status, applied_at, source, notes, speech, rating, confidence,
-			created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			created_at, updated_at, follow_up_snoozed_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			a.ID, a.CompanyName, a.CompanyWebsite, a.CompanyIndustry, a.CompanySize, a.CompanyLocation,
 			a.JobTitle, a.JobURL, a.JobDescription, a.ContractType, a.ContractDuration, a.WorkMode, a.Location,
 			a.Salary, a.SalaryCurrency, a.Status, appliedAtStr, a.Source, a.Notes, a.Speech, a.Rating, a.Confidence,
-			sqliteTime(a.CreatedAt), sqliteTime(a.UpdatedAt),
+			sqliteTime(a.CreatedAt), sqliteTime(a.UpdatedAt), snoozedStr,
 		)
 		if err != nil {
 			skipped++
@@ -1065,7 +1133,7 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.QueryContext(r.Context(), `SELECT id, company_name, company_website, company_industry,
 		company_size, company_location, job_title, job_url, job_description, contract_type, contract_duration, work_mode,
 		location, salary, salary_currency, status, applied_at, source,
-		notes, speech, rating, confidence, created_at, updated_at FROM applications ORDER BY created_at`)
+		notes, speech, rating, confidence, created_at, updated_at, follow_up_snoozed_until FROM applications ORDER BY created_at`)
 	if err != nil {
 		log.Printf("ExportCSV query: %v", err)
 		writeError(w, http.StatusInternalServerError, "could not export data")
@@ -1167,7 +1235,7 @@ func scanApplication(s scanner, a *models.Application) error {
 		&a.ContractType, &a.ContractDuration, &a.WorkMode, &a.Location,
 		&a.Salary, &a.SalaryCurrency, &a.Status,
 		&a.AppliedAt, &a.Source, &a.Notes, &a.Speech, &a.Rating, &a.Confidence,
-		&a.CreatedAt, &a.UpdatedAt,
+		&a.CreatedAt, &a.UpdatedAt, &a.FollowUpSnoozedUntil,
 	)
 }
 

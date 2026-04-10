@@ -33,6 +33,8 @@ export const api = {
     update: (id: string, data: Partial<Application>) =>
       request<Application>(`/applications/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/applications/${id}`, { method: 'DELETE' }),
+    snooze: (id: string, data: { until?: string; skip?: boolean }) =>
+      request<{ status: string }>(`/applications/${id}/snooze`, { method: 'PUT', body: JSON.stringify(data) }),
   },
   interviews: {
     list: (appId: string) => request<Interview[]>(`/applications/${appId}/interviews`),

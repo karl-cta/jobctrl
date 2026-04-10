@@ -77,8 +77,9 @@ type Application struct {
 	Speech          *string           `json:"speech"`
 	Rating          *int              `json:"rating"`
 	Confidence      *int              `json:"confidence"`
-	CreatedAt       time.Time         `json:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at"`
+	CreatedAt              time.Time         `json:"created_at"`
+	UpdatedAt              time.Time         `json:"updated_at"`
+	FollowUpSnoozedUntil   *string           `json:"follow_up_snoozed_until,omitempty"`
 
 	Interviews     []Interview     `json:"interviews,omitempty"`
 	Contacts       []Contact       `json:"contacts,omitempty"`
@@ -131,6 +132,15 @@ type Stats struct {
 	TopSources         []SourceCount      `json:"top_sources"`
 	OverTime           []TimeSeriesPoint  `json:"over_time"`
 	AvgDaysInStatus    map[string]float64 `json:"avg_days_in_status"`
+	FollowUps          []FollowUpItem     `json:"follow_ups"`
+}
+
+type FollowUpItem struct {
+	ID              string `json:"id"`
+	CompanyName     string `json:"company_name"`
+	JobTitle        string `json:"job_title"`
+	Status          string `json:"status"`
+	LastInterviewAt string `json:"last_interview_at"`
 }
 
 type SourceCount struct {

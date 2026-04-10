@@ -32,6 +32,16 @@ const fr: Translations = {
   'dashboard.import_skipped': 'ignorée(s)',
   'dashboard.import_error': 'Erreur lors de l\'import',
   'dashboard.import_invalid': 'Fichier JSON invalide',
+  'dashboard.follow_ups_title': 'Sans nouvelles depuis un entretien',
+  'dashboard.follow_ups_desc': 'Ces candidatures n\'ont pas bougé depuis votre dernier entretien. C\'est peut-être le moment de relancer.',
+  'dashboard.follow_up_days_ago': 'il y a {days}j',
+  'dashboard.follow_up_remind_later': 'Me rappeler dans',
+  'dashboard.follow_up_snooze_1w': '1 sem.',
+  'dashboard.follow_up_snooze_2w': '2 sem.',
+  'dashboard.follow_up_snooze_3w': '3 sem.',
+  'dashboard.follow_up_skip': 'Ignorer',
+  'dashboard.follow_up_snoozed': 'Rappel reporté',
+  'dashboard.follow_up_skipped': 'Rappel ignoré',
 
   // List
   'list.title': 'Candidatures',
@@ -242,6 +252,16 @@ const en: Translations = {
   'dashboard.import_skipped': 'skipped',
   'dashboard.import_error': 'Import failed',
   'dashboard.import_invalid': 'Invalid JSON file',
+  'dashboard.follow_ups_title': 'No news since an interview',
+  'dashboard.follow_ups_desc': 'These applications haven\'t moved since your last interview. It might be time to follow up.',
+  'dashboard.follow_up_days_ago': '{days}d ago',
+  'dashboard.follow_up_remind_later': 'Remind me in',
+  'dashboard.follow_up_snooze_1w': '1 wk',
+  'dashboard.follow_up_snooze_2w': '2 wks',
+  'dashboard.follow_up_snooze_3w': '3 wks',
+  'dashboard.follow_up_skip': 'Skip',
+  'dashboard.follow_up_snoozed': 'Reminder snoozed',
+  'dashboard.follow_up_skipped': 'Reminder dismissed',
 
   // List
   'list.title': 'Applications',
