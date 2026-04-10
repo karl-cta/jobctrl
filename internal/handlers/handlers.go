@@ -435,6 +435,74 @@ func (h *Handler) DeleteApplication(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) BulkUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs    []string                `json:"ids"`
+		Status models.ApplicationStatus `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "no application IDs provided")
+		return
+	}
+	if !validStatuses[body.Status] {
+		writeError(w, http.StatusBadRequest, "invalid status")
+		return
+	}
+
+	now := sqliteTime(time.Now().UTC())
+	var updated int
+	for _, id := range body.IDs {
+		var oldStatus models.ApplicationStatus
+		if err := h.db.QueryRowContext(r.Context(), `SELECT status FROM applications WHERE id = ?`, id).Scan(&oldStatus); err != nil {
+			continue
+		}
+		if oldStatus == body.Status {
+			continue
+		}
+		result, err := h.db.ExecContext(r.Context(), `UPDATE applications SET status = ?, updated_at = ? WHERE id = ?`, body.Status, now, id)
+		if err != nil {
+			continue
+		}
+		if n, _ := result.RowsAffected(); n > 0 {
+			h.addTimelineEvent(r, id, "status_change", fmt.Sprintf("Status changed from %s to %s", oldStatus, body.Status))
+			updated++
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]int{"updated": updated})
+}
+
+func (h *Handler) BulkDelete(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "no application IDs provided")
+		return
+	}
+
+	var deleted int
+	for _, id := range body.IDs {
+		result, err := h.db.ExecContext(r.Context(), `DELETE FROM applications WHERE id = ?`, id)
+		if err != nil {
+			continue
+		}
+		if n, _ := result.RowsAffected(); n > 0 {
+			deleted++
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]int{"deleted": deleted})
+}
+
 // Interviews
 
 func (h *Handler) ListInterviews(w http.ResponseWriter, r *http.Request) {

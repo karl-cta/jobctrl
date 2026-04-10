@@ -76,6 +76,14 @@ const fr: Translations = {
   'list.page_prev': 'Page précédente',
   'list.page_next': 'Page suivante',
   'list.kanban_filter_hint': 'Utilisez les filtres pour affiner.',
+  'list.selected_one': '1 sélectionnée',
+  'list.selected_other': '{count} sélectionnées',
+  'list.bulk_status': 'Changer le statut',
+  'list.bulk_delete': 'Supprimer',
+  'list.bulk_delete_confirm': 'Supprimer les {count} candidatures sélectionnées ?',
+  'list.bulk_done': '{count} candidature(s) mise(s) à jour',
+  'list.bulk_deleted': '{count} candidature(s) supprimée(s)',
+  'list.select': 'Sélectionner',
 
   // Detail
   'detail.not_found': 'Candidature introuvable',
@@ -300,6 +308,14 @@ const en: Translations = {
   'list.page_prev': 'Previous page',
   'list.page_next': 'Next page',
   'list.kanban_filter_hint': 'Use filters to narrow down.',
+  'list.selected_one': '1 selected',
+  'list.selected_other': '{count} selected',
+  'list.bulk_status': 'Change status',
+  'list.bulk_delete': 'Delete',
+  'list.bulk_delete_confirm': 'Delete {count} selected applications?',
+  'list.bulk_done': '{count} application(s) updated',
+  'list.bulk_deleted': '{count} application(s) deleted',
+  'list.select': 'Select',
 
   // Detail
   'detail.not_found': 'Application not found',

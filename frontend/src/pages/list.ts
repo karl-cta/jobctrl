@@ -4,6 +4,7 @@ import { navigate } from '../router'
 import { t, tp, getDateLocale } from '../i18n'
 import { icons } from '../icons'
 import { esc } from '../sanitize'
+import { toast } from '../components/toast'
 import { statusLabel, STATUS_COLORS, ALL_STATUSES, type Application, type ApplicationStatus } from '../types'
 import { faviconUrl, domainFromUrl } from '../job-boards'
 
@@ -61,6 +62,8 @@ export async function ListPage(): Promise<HTMLElement> {
   let currentPage = 1
   let viewMode: 'table' | 'kanban' = (localStorage.getItem('jc-view') as 'table' | 'kanban') || 'table'
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  const selectedIds = new Set<string>()
+  let selectMode = false
 
   const content = document.createElement('div')
   content.className = 'space-y-6 stagger'
@@ -96,6 +99,7 @@ export async function ListPage(): Promise<HTMLElement> {
           role="link"
           aria-label="${esc(app.company_name)} — ${esc(app.job_title)}"
         >
+          <button data-select-id="${app.id}" class="shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${selectedIds.has(app.id) ? 'bg-accent border-accent text-white' : 'border-border hover:border-accent/50'} ${selectMode ? '' : 'hidden'}" aria-pressed="${selectedIds.has(app.id)}">${selectedIds.has(app.id) ? '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>' : ''}</button>
           <div class="flex-1 min-w-0">
             <div class="mb-1.5">
               <span class="font-semibold text-primary block break-words sm:truncate">${companyFavicon(app, 'w-5 h-5 sm:w-6 sm:h-6 inline-block -mt-0.5 mr-1.5')}${esc(app.company_name)}</span>
@@ -172,20 +176,92 @@ export async function ListPage(): Promise<HTMLElement> {
     `
   }
 
+  function toggleSelectMode(on?: boolean, selectAll = false) {
+    selectMode = on ?? !selectMode
+    selectedIds.clear()
+    content.querySelectorAll<HTMLButtonElement>('[data-select-id]').forEach(btn => {
+      btn.classList.toggle('hidden', !selectMode)
+      const id = btn.dataset.selectId!
+      if (selectMode && selectAll) {
+        selectedIds.add(id)
+        btn.className = btn.className.replace(/border-border hover:border-accent\/50/, 'bg-accent border-accent text-white')
+        btn.innerHTML = '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>'
+        btn.setAttribute('aria-pressed', 'true')
+      } else {
+        btn.className = btn.className.replace(/bg-accent border-accent text-white/, 'border-border hover:border-accent/50')
+        btn.innerHTML = ''
+        btn.setAttribute('aria-pressed', 'false')
+      }
+    })
+    const modeBtn = content.querySelector('#select-mode-btn')
+    if (modeBtn) modeBtn.textContent = selectMode ? t('form.cancel') : t('list.select')
+    updateBulkBar()
+  }
+
+  function updateBulkBar() {
+    const bar = content.querySelector('#bulk-bar') as HTMLElement
+    if (!bar) return
+    const count = selectedIds.size
+    if (count === 0) {
+      bar.classList.add('hidden')
+      return
+    }
+    bar.classList.remove('hidden')
+    const countEl = bar.querySelector('#bulk-count')
+    if (countEl) countEl.textContent = count === 1 ? t('list.selected_one') : t('list.selected_other').replace('{count}', String(count))
+  }
+
   function attachCardListeners() {
     content.querySelectorAll('[data-app-id]').forEach(el => {
       const navToApp = (e: Event) => {
         const target = e.target as HTMLElement
-        if (target.closest('[data-delete-id]')) return
+        if (target.closest('[data-delete-id]') || target.closest('[data-select-id]')) return
         navigate('/applications/' + el.getAttribute('data-app-id'))
       }
       el.addEventListener('click', navToApp)
       el.addEventListener('keydown', (e) => {
         if ((e as KeyboardEvent).key === 'Enter' || (e as KeyboardEvent).key === ' ') {
+          if ((e.target as HTMLElement).matches('[data-select-id]')) return
           e.preventDefault()
           navToApp(e)
         }
       })
+    })
+
+    // Selection toggle
+    content.querySelectorAll<HTMLButtonElement>('[data-select-id]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        const id = btn.dataset.selectId!
+        if (selectedIds.has(id)) {
+          selectedIds.delete(id)
+          btn.className = btn.className.replace(/bg-accent border-accent text-white/, 'border-border hover:border-accent/50')
+          btn.innerHTML = ''
+          btn.setAttribute('aria-pressed', 'false')
+        } else {
+          selectedIds.add(id)
+          btn.className = btn.className.replace(/border-border hover:border-accent\/50/, 'bg-accent border-accent text-white')
+          btn.innerHTML = '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>'
+          btn.setAttribute('aria-pressed', 'true')
+        }
+        updateBulkBar()
+      })
+    })
+
+    // Long press to enter select mode (mobile)
+    content.querySelectorAll<HTMLElement>('[data-app-id]').forEach(el => {
+      let longPressTimer: ReturnType<typeof setTimeout> | null = null
+      el.addEventListener('touchstart', () => {
+        longPressTimer = setTimeout(() => {
+          if (!selectMode) toggleSelectMode(true)
+          const id = el.dataset.appId!
+          const btn = el.querySelector<HTMLButtonElement>(`[data-select-id="${id}"]`)
+          if (btn) btn.click()
+          longPressTimer = null
+        }, 500)
+      }, { passive: true })
+      el.addEventListener('touchend', () => { if (longPressTimer) clearTimeout(longPressTimer) })
+      el.addEventListener('touchmove', () => { if (longPressTimer) clearTimeout(longPressTimer) })
     })
 
     content.querySelectorAll('[data-delete-id]').forEach(el => {
@@ -253,6 +329,7 @@ export async function ListPage(): Promise<HTMLElement> {
           <h1 class="text-2xl font-bold text-primary tracking-tight">${t('list.title')}</h1>
           <div class="flex items-center gap-3">
             ${viewToggle}
+            <button id="select-mode-btn" class="btn-ghost text-sm py-1.5 px-3 ${viewMode === 'kanban' ? 'hidden' : ''}">${t('list.select')}</button>
             <a href="/applications/new" data-link class="btn-primary gap-1.5">${icons.plus} ${t('list.new')}</a>
           </div>
         </div>
@@ -323,18 +400,39 @@ export async function ListPage(): Promise<HTMLElement> {
         <div id="apps-content">
           ${viewMode === 'kanban' ? renderKanban(apps, resp.total) : renderTable(apps)}
         </div>
+
+        <div id="bulk-bar" class="fixed bottom-0 left-0 right-0 sm:bottom-6 sm:left-1/2 sm:-translate-x-1/2 sm:right-auto z-50 hidden">
+          <div class="flex items-center gap-2 sm:gap-3 px-4 py-3 sm:px-5 sm:rounded-xl border-t sm:border border-border shadow-elevated" style="background: rgb(var(--color-surface-1));">
+            <span id="bulk-count" class="text-sm font-medium text-primary whitespace-nowrap shrink-0"></span>
+            <div class="hidden sm:block w-px h-5 bg-border"></div>
+            <select id="bulk-status-select" class="select text-sm py-2 px-2 pr-7 min-w-0 flex-1 sm:flex-none sm:w-auto">
+              ${ALL_STATUSES.map(s => `<option value="${s}">${statusLabel(s)}</option>`).join('')}
+            </select>
+            <button id="bulk-status-btn" class="btn-primary text-sm py-2 px-3" title="${t('list.bulk_status')}"><span class="sm:hidden">OK</span><span class="hidden sm:inline">${t('list.bulk_status')}</span></button>
+            <div class="hidden sm:block w-px h-5 bg-border"></div>
+            <button id="bulk-delete-btn" class="btn-ghost text-red-500 dark:text-red-400 p-2 sm:px-3 sm:py-2" title="${t('list.bulk_delete')}"><span class="sm:hidden">${icons.trash}</span><span class="hidden sm:inline">${t('list.bulk_delete')}</span></button>
+          </div>
+        </div>
       `
 
       content.querySelector('#view-table')?.addEventListener('click', () => {
         viewMode = 'table'
         localStorage.setItem('jc-view', 'table')
         currentPage = 1
+        const selBtn = content.querySelector('#select-mode-btn') as HTMLElement
+        if (selBtn) selBtn.classList.remove('hidden')
         load()
       })
       content.querySelector('#view-kanban')?.addEventListener('click', () => {
         viewMode = 'kanban'
         localStorage.setItem('jc-view', 'kanban')
+        toggleSelectMode(false)
+        const selBtn = content.querySelector('#select-mode-btn') as HTMLElement
+        if (selBtn) selBtn.classList.add('hidden')
         load()
+      })
+      content.querySelector('#select-mode-btn')?.addEventListener('click', () => {
+        toggleSelectMode(!selectMode)
       })
 
       content.querySelector('#search-input')?.addEventListener('input', (e) => {
@@ -369,6 +467,24 @@ export async function ListPage(): Promise<HTMLElement> {
           chip.classList.replace('chip-enter', 'chip-exit')
           chip.addEventListener('animationend', () => chip.remove(), { once: true })
         }
+        load()
+      })
+
+      // Bulk actions
+      content.querySelector('#bulk-status-btn')?.addEventListener('click', async () => {
+        const status = (content.querySelector('#bulk-status-select') as HTMLSelectElement).value
+        const ids = [...selectedIds]
+        const result = await api.applications.bulkStatus(ids, status)
+        toast(t('list.bulk_done').replace('{count}', String(result.updated)), 'success')
+        toggleSelectMode(false)
+        load()
+      })
+      content.querySelector('#bulk-delete-btn')?.addEventListener('click', async () => {
+        const ids = [...selectedIds]
+        if (!confirm(t('list.bulk_delete_confirm').replace('{count}', String(ids.length)))) return
+        const result = await api.applications.bulkDelete(ids)
+        toast(t('list.bulk_deleted').replace('{count}', String(result.deleted)), 'info')
+        toggleSelectMode(false)
         load()
       })
     } else {

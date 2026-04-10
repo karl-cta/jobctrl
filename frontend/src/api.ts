@@ -38,6 +38,10 @@ export const api = {
     checkDuplicates: (companyName: string) =>
       request<Array<{ id: string; company_name: string; job_title: string; status: string; created_at: string }>>(
         `/applications/duplicates?company_name=${encodeURIComponent(companyName)}`),
+    bulkStatus: (ids: string[], status: string) =>
+      request<{ updated: number }>('/applications/bulk/status', { method: 'PUT', body: JSON.stringify({ ids, status }) }),
+    bulkDelete: (ids: string[]) =>
+      request<{ deleted: number }>('/applications/bulk', { method: 'DELETE', body: JSON.stringify({ ids }) }),
   },
   interviews: {
     list: (appId: string) => request<Interview[]>(`/applications/${appId}/interviews`),

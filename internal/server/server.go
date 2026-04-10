@@ -41,6 +41,8 @@ func New(db *sql.DB, frontendFS embed.FS, version string) http.Handler {
 		r.Get("/applications", h.ListApplications)
 		r.Post("/applications", h.CreateApplication)
 		r.Get("/applications/duplicates", h.CheckDuplicates)
+		r.Put("/applications/bulk/status", h.BulkUpdateStatus)
+		r.Delete("/applications/bulk", h.BulkDelete)
 		r.Get("/applications/{id}", h.GetApplication)
 		r.Put("/applications/{id}", h.UpdateApplication)
 		r.Put("/applications/{id}/snooze", h.SnoozeFollowUp)

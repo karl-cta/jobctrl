@@ -43,6 +43,8 @@ func newTestServer(t *testing.T) *testServer {
 	r.Get("/api/applications", h.ListApplications)
 	r.Post("/api/applications", h.CreateApplication)
 	r.Get("/api/applications/duplicates", h.CheckDuplicates)
+	r.Put("/api/applications/bulk/status", h.BulkUpdateStatus)
+	r.Delete("/api/applications/bulk", h.BulkDelete)
 	r.Get("/api/applications/{id}", h.GetApplication)
 	r.Put("/api/applications/{id}", h.UpdateApplication)
 	r.Put("/api/applications/{id}/snooze", h.SnoozeFollowUp)
@@ -1355,5 +1357,76 @@ func TestCheckDuplicates_EmptyParam(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&results)
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for empty param, got %d", len(results))
+	}
+}
+
+// --- Bulk actions tests ---
+
+func TestBulkUpdateStatus(t *testing.T) {
+	ts := newTestServer(t)
+	a1 := createApp(t, ts, map[string]any{"company_name": "A", "status": "Applied"})
+	a2 := createApp(t, ts, map[string]any{"company_name": "B", "status": "Applied"})
+	createApp(t, ts, map[string]any{"company_name": "C", "status": "Applied"})
+
+	w := ts.do(t, "PUT", "/api/applications/bulk/status", map[string]any{
+		"ids": []string{a1.ID, a2.ID}, "status": "Rejected",
+	})
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	result := decode[map[string]any](t, w)
+	if int(result["updated"].(float64)) != 2 {
+		t.Errorf("expected 2 updated, got %v", result["updated"])
+	}
+
+	// Verify statuses changed
+	detail := ts.do(t, "GET", "/api/applications/"+a1.ID, nil)
+	app := decode[models.Application](t, detail)
+	if app.Status != "Rejected" {
+		t.Errorf("expected Rejected, got %s", app.Status)
+	}
+}
+
+func TestBulkUpdateStatus_InvalidStatus(t *testing.T) {
+	ts := newTestServer(t)
+	a := createApp(t, ts, map[string]any{"company_name": "X"})
+	w := ts.do(t, "PUT", "/api/applications/bulk/status", map[string]any{
+		"ids": []string{a.ID}, "status": "InvalidStatus",
+	})
+	if w.Code != 400 {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestBulkDelete(t *testing.T) {
+	ts := newTestServer(t)
+	a1 := createApp(t, ts, map[string]any{"company_name": "A"})
+	a2 := createApp(t, ts, map[string]any{"company_name": "B"})
+	createApp(t, ts, map[string]any{"company_name": "C"})
+
+	w := ts.do(t, "DELETE", "/api/applications/bulk", map[string]any{
+		"ids": []string{a1.ID, a2.ID},
+	})
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	result := decode[map[string]any](t, w)
+	if int(result["deleted"].(float64)) != 2 {
+		t.Errorf("expected 2 deleted, got %v", result["deleted"])
+	}
+
+	// Verify only 1 remains
+	list := ts.do(t, "GET", "/api/applications", nil)
+	resp := decode[listResponse](t, list)
+	if resp.Total != 1 {
+		t.Errorf("expected 1 remaining, got %d", resp.Total)
+	}
+}
+
+func TestBulkDelete_EmptyIds(t *testing.T) {
+	ts := newTestServer(t)
+	w := ts.do(t, "DELETE", "/api/applications/bulk", map[string]any{"ids": []string{}})
+	if w.Code != 400 {
+		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }
