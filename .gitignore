@@ -10,6 +10,7 @@ frontend/dist/*.css
 *.db
 *.db-shm
 *.db-wal
+*.db.backup-*
 
 # Environment
 .env
