@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.1 — 2026-09-22
+## 1.1.0 — 2026-09-22
 
 Your data is safe across this upgrade: the app snapshots the database next to itself before applying its one migration, and the migration only remaps a removed status while keeping a visible trace in each affected timeline. See "Upgrading" in the README.
 
