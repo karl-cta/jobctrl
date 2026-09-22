@@ -23,7 +23,7 @@
 
 - **Full pipeline tracking** with statuses from Wishlist to Accepted, interviews, contacts, and timeline
 - **Auto-fill from URL** by pasting a job listing link (extracts company, title, salary via JSON-LD / Open Graph)
-- **Dashboard** with stats, pipeline visualization, charts, top sources, and follow-up reminders
+- **Dashboard** with period-based indicators, an "in progress" card for live interview processes, a 12-week sent-vs-replies timeline, a six-month activity heatmap with per-day details, a journey funnel, status breakdown and sources
 - **Follow-up reminders** for applications with no response after an interview (snooze or dismiss)
 - **Automatic "no reply"** moves applications with no answer after 30 days out of your pending pile
 - **Duplicate detection** warns you when applying to a company you've already contacted
