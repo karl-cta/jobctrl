@@ -5,7 +5,7 @@ import { t } from '../i18n'
 import { icons } from '../icons'
 import { toast } from '../components/toast'
 import { esc } from '../sanitize'
-import { ALL_STATUSES, statusLabel, type Application, type ApplicationStatus } from '../types'
+import { ALL_STATUSES, statusLabel, contractLabel, workModeLabel, type Application, type ApplicationStatus } from '../types'
 import { openModal } from '../components/modal'
 import { getDateLocale } from '../i18n'
 import { setupSourceAutocomplete } from '../components/source-autocomplete'
@@ -77,7 +77,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
             <label for="f-contract-type" class="label">${t('form.contract_type')}</label>
             <select id="f-contract-type" name="contract_type" class="select">
               ${['CDI', 'CDD', 'Freelance', 'Internship', 'Other'].map(ct =>
-                `<option value="${ct}" ${v('contract_type') === ct ? 'selected' : ''}>${ct}</option>`
+                `<option value="${ct}" ${v('contract_type') === ct ? 'selected' : ''}>${contractLabel(ct)}</option>`
               ).join('')}
             </select>
           </div>
@@ -89,7 +89,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
             <label for="f-work-mode" class="label">${t('form.work_mode')}</label>
             <select id="f-work-mode" name="work_mode" class="select">
               ${['On-site', 'Hybrid', 'Remote'].map(m =>
-                `<option value="${m}" ${v('work_mode') === m ? 'selected' : ''}>${m}</option>`
+                `<option value="${m}" ${v('work_mode') === m ? 'selected' : ''}>${workModeLabel(m)}</option>`
               ).join('')}
             </select>
           </div>

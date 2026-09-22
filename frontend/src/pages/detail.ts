@@ -11,6 +11,10 @@ import {
   statusLabel,
   STATUS_COLORS,
   ALL_STATUSES,
+  interviewTypeLabel,
+  interviewOutcomeLabel,
+  contractLabel,
+  workModeLabel,
   type ApplicationStatus,
   type Interview,
   type Contact,
@@ -21,6 +25,7 @@ const OUTCOME_COLORS: Record<string, string> = {
   Failed: 'bg-rose-50 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300',
   Pending: 'bg-stone-100 text-stone-600 dark:bg-stone-800/60 dark:text-stone-300',
   Cancelled: 'bg-stone-100 text-stone-500 dark:bg-stone-800/40 dark:text-stone-400',
+  Rejected: 'bg-rose-50 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300',
 }
 
 function buildInterviewForm(iv?: Partial<Interview>): {
@@ -38,8 +43,8 @@ function buildInterviewForm(iv?: Partial<Interview>): {
       <div>
         <label for="iv-type" class="label">${t('detail.interview_type')}</label>
         <select id="iv-type" name="type" class="select">
-          ${['Phone', 'Video', 'On-site', 'Technical', 'HR', 'Culture', 'Final'].map(type =>
-            `<option value="${type}" ${iv?.type === type ? 'selected' : ''}>${type}</option>`
+          ${['Screening', 'Phone', 'Video', 'On-site', 'Technical', 'HR', 'Culture', 'Final'].map(type =>
+            `<option value="${type}" ${iv?.type === type ? 'selected' : ''}>${esc(interviewTypeLabel(type))}</option>`
           ).join('')}
         </select>
       </div>
@@ -63,8 +68,8 @@ function buildInterviewForm(iv?: Partial<Interview>): {
         <label for="iv-outcome" class="label">${t('detail.interview_outcome')}</label>
         <select id="iv-outcome" name="outcome" class="select">
           <option value="">${t('detail.interview_outcome_none')}</option>
-          ${['Passed', 'Failed', 'Pending', 'Cancelled'].map(o =>
-            `<option value="${o}" ${iv?.outcome === o ? 'selected' : ''}>${o}</option>`
+          ${['Passed', 'Failed', 'Pending', 'Cancelled', 'Rejected'].map(o =>
+            `<option value="${o}" ${iv?.outcome === o ? 'selected' : ''}>${esc(interviewOutcomeLabel(o))}</option>`
           ).join('')}
         </select>
       </div>
@@ -295,7 +300,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     Offer: 'bg-emerald-500',
     Accepted: 'bg-teal-500',
     Rejected: 'bg-rose-400',
-    Withdrawn: 'bg-stone-400',
+    NoReply: 'bg-indigo-400',
   }
 
   const checkSvg = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5 text-accent shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>'
@@ -519,11 +524,13 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   // — Metadata: clean typographic row, no boxes
   const details: Array<{ label: string; value: string; href?: string; iconHtml?: string }> = []
   if (app.contract_type) {
-    let contractValue = app.contract_type as string
-    if (app.contract_type === 'CDD' && app.contract_duration) contractValue += ` (${app.contract_duration} mois)`
+    let contractValue = contractLabel(app.contract_type as string)
+    if (app.contract_type === 'CDD' && app.contract_duration) {
+      contractValue += ` (${app.contract_duration} ${t('detail.months')})`
+    }
     details.push({ label: t('detail.contract'), value: contractValue })
   }
-  if (app.work_mode) details.push({ label: t('detail.mode'), value: app.work_mode })
+  if (app.work_mode) details.push({ label: t('detail.mode'), value: workModeLabel(app.work_mode) })
   if (app.salary) details.push({ label: t('detail.salary'), value: `${app.salary / 1000}k \u20ac` })
   if (app.applied_at) details.push({ label: t('detail.applied_at'), value: new Date(app.applied_at).toLocaleDateString(dateFmt) })
   details.push({ label: t('detail.created_at'), value: new Date(app.created_at).toLocaleDateString(dateFmt) })
@@ -556,7 +563,6 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   const layout = document.createElement('div')
   layout.className = 'flex flex-col lg:flex-row gap-6'
-
 
   // Notes tab
   const notesPanel = document.createElement('div')
@@ -675,10 +681,10 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap mb-1.5">
               <span class="text-sm font-semibold text-primary">${t('detail.round')} ${iv.round}</span>
-              <span class="text-xs text-muted bg-surface-2 rounded px-2 py-0.5 font-medium">${iv.type}</span>
-              ${iv.outcome ? `<span class="badge ${OUTCOME_COLORS[iv.outcome] ?? ''}">${iv.outcome}</span>` : ''}
+              <span class="text-xs text-muted bg-surface-2 rounded px-2 py-0.5 font-medium">${esc(interviewTypeLabel(iv.type))}</span>
+              ${iv.outcome ? `<span class="badge ${OUTCOME_COLORS[iv.outcome] ?? ''}">${esc(interviewOutcomeLabel(iv.outcome))}</span>` : ''}
             </div>
-            ${iv.scheduled_at ? `<p class="text-xs text-muted mt-1 tabular-nums">${new Date(iv.scheduled_at).toLocaleString(dateFmt)}${iv.duration_minutes ? ` \u00b7 ${iv.duration_minutes} min` : ''}</p>` : ''}
+            ${iv.scheduled_at ? `<p class="text-xs text-muted mt-1 tabular-nums">${new Date(iv.scheduled_at).toLocaleString(dateFmt, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}${iv.duration_minutes ? ` \u00b7 ${iv.duration_minutes} min` : ''}</p>` : ''}
             ${iv.interviewer_name ? `<p class="text-xs text-muted">${esc(iv.interviewer_name)}${iv.interviewer_role ? ` \u00b7 ${esc(iv.interviewer_role)}` : ''}</p>` : ''}
             ${iv.notes ? `<p class="text-xs text-muted/70 mt-2 line-clamp-2">${esc(iv.notes)}</p>` : ''}
           </div>

@@ -10,10 +10,10 @@ export type ApplicationStatus =
   | 'Offer'
   | 'Accepted'
   | 'Rejected'
-  | 'Withdrawn'
+  | 'NoReply'
 
-export type InterviewType = 'Phone' | 'Video' | 'On-site' | 'Technical' | 'HR' | 'Culture' | 'Final'
-export type InterviewOutcome = 'Passed' | 'Failed' | 'Pending' | 'Cancelled'
+export type InterviewType = 'Screening' | 'Phone' | 'Video' | 'On-site' | 'Technical' | 'HR' | 'Culture' | 'Final'
+export type InterviewOutcome = 'Passed' | 'Failed' | 'Pending' | 'Cancelled' | 'Rejected'
 
 export interface Application {
   id: string
@@ -84,14 +84,90 @@ export interface Stats {
   total: number
   by_status: Record<ApplicationStatus, number>
   response_rate: number
-  offer_rate: number
-  active_interviews: number
-  avg_salary?: number
-  salary_distribution?: Array<{ range: string; count: number }>
   top_sources: Array<{ source: string; count: number }>
-  over_time?: Array<{ period: string; count: number }>
-  avg_days_in_status?: Record<string, number>
   follow_ups?: FollowUpItem[]
+  activity_heatmap?: ActivityDay[]
+  recent_activity?: ActivityItem[]
+  upcoming_interviews?: number
+  active_processes?: ActiveProcess[]
+  period?: PeriodStats
+  weekly?: WeeklyPoint[]
+}
+
+/** A metric over the selected period: current value, previous-period value
+ *  (null when there is no previous period, e.g. "all time") and 8 bucketed
+ *  values for the sparkline. */
+export interface KPI {
+  value: number
+  prev: number | null
+  series: number[]
+}
+
+export interface FunnelStats {
+  sent: number
+  responded: number
+  interviewing: number
+  offers: number
+  accepted: number
+}
+
+/** Metrics that depend on the dashboard period selector. `days` is 0 for "all time". */
+export interface PeriodStats {
+  days: number
+  sent: KPI
+  responded: KPI
+  response_rate: KPI
+  interviews: KPI
+  rejected: KPI
+  no_reply: KPI
+  offers: KPI
+  funnel: FunnelStats
+}
+
+/** One interview as seen from the dashboard. `at` is a UTC datetime string
+ *  (`2006-01-02 15:04:05`). */
+export interface InterviewStep {
+  round: number
+  type: string
+  at: string
+  outcome: string
+}
+
+/** An application currently in Screening or Interviewing: where it stands and
+ *  how long the company has been silent. */
+export interface ActiveProcess {
+  id: string
+  company_name: string
+  job_title: string
+  status: 'Screening' | 'Interviewing'
+  rounds: number
+  last_interview: InterviewStep | null
+  next_interview: InterviewStep | null
+  silent_days: number
+}
+
+/** One Monday-based week of the 12-week timeline chart. */
+export interface WeeklyPoint {
+  week_start: string
+  sent: number
+  replies: number
+}
+
+export type DashboardPeriod = '30' | '90' | '365' | 'all'
+
+export interface ActivityDay {
+  date: string
+  count: number
+}
+
+export interface ActivityItem {
+  time: string
+  event_type: string
+  description: string
+  application_id: string
+  company_name: string
+  job_title: string
+  status: ApplicationStatus
 }
 
 export interface FollowUpItem {
@@ -114,12 +190,32 @@ export function statusLabel(status: ApplicationStatus): string {
   return t(`status.${status}`)
 }
 
-export function statusLabelCount(status: ApplicationStatus, count: number): string {
-  const suffix = count === 1 ? '_one' : '_other'
-  const key = `status.${status}${suffix}`
-  const result = t(key)
-  // If no plural form exists, t() returns the key itself — fall back to default label
-  return result === key ? t(`status.${status}`) : result
+/** Localised contract type; unknown values pass through unchanged. */
+export function contractLabel(value: string): string {
+  const key = `contract.${value}`
+  const label = t(key)
+  return label === key ? value : label
+}
+
+/** Localised work mode; unknown values pass through unchanged. */
+export function workModeLabel(value: string): string {
+  const key = `work_mode.${value}`
+  const label = t(key)
+  return label === key ? value : label
+}
+
+/** Localised interview type; unknown values pass through unchanged. */
+export function interviewTypeLabel(type: string): string {
+  const key = `interview.type.${type}`
+  const label = t(key)
+  return label === key ? type : label
+}
+
+/** Localised interview outcome; unknown values pass through unchanged. */
+export function interviewOutcomeLabel(outcome: string): string {
+  const key = `interview.outcome.${outcome}`
+  const label = t(key)
+  return label === key ? outcome : label
 }
 
 export const STATUS_COLORS: Record<ApplicationStatus, string> = {
@@ -130,9 +226,9 @@ export const STATUS_COLORS: Record<ApplicationStatus, string> = {
   Offer: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
   Accepted: 'bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400',
   Rejected: 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400',
-  Withdrawn: 'bg-stone-100 text-stone-500 dark:bg-stone-800/40 dark:text-stone-500',
+  NoReply: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400',
 }
 
 export const ALL_STATUSES: ApplicationStatus[] = [
-  'Wishlist', 'Applied', 'Screening', 'Interviewing', 'Offer', 'Accepted', 'Rejected', 'Withdrawn',
+  'Wishlist', 'Applied', 'Screening', 'Interviewing', 'Offer', 'Accepted', 'Rejected', 'NoReply',
 ]

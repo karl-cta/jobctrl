@@ -1,4 +1,4 @@
-import type { Application, Interview, Contact, Stats, PaginatedResponse } from './types'
+import type { Application, Interview, Contact, Stats, PaginatedResponse, DashboardPeriod, ActivityItem } from './types'
 
 const BASE = '/api'
 
@@ -17,10 +17,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   applications: {
-    list: (params?: { status?: string; source?: string; search?: string; sort?: string; dir?: string; page?: number; per_page?: number }) => {
+    list: (params?: { status?: string; source?: string; search?: string; sort?: string; dir?: string; page?: number; per_page?: number; has_interviews?: boolean; has_reply?: boolean }) => {
       const q = new URLSearchParams()
       if (params) {
         for (const [k, v] of Object.entries(params)) {
+          // The API expects the flag as `has_interviews=1`, and absent when off
+          // — `String(true)` would send the string "true".
+          if (k === 'has_interviews' || k === 'has_reply') { if (v) q.set(k, '1'); continue }
           if (v !== undefined && v !== '') q.set(k, String(v))
         }
       }
@@ -62,7 +65,11 @@ export const api = {
   extract: (url: string) =>
     request<Partial<Application>>('/extract', { method: 'POST', body: JSON.stringify({ url }) }),
   sources: () => request<string[]>('/sources'),
-  stats: () => request<Stats>('/stats'),
+  /** Timeline events for one UTC day (`YYYY-MM-DD`) — the heatmap's cell key. */
+  activityByDay: (date: string) =>
+    request<ActivityItem[]>(`/activity?date=${encodeURIComponent(date)}`),
+  stats: (period?: DashboardPeriod) =>
+    request<Stats>(`/stats${period ? `?period=${encodeURIComponent(period)}` : ''}`),
   export: () => request<unknown>('/export'),
   import_: (data: unknown) =>
     request<{ imported: number; skipped: number; total: number }>('/import', { method: 'POST', body: JSON.stringify(data) }),

@@ -44,7 +44,8 @@ export default {
       },
       fontFamily: {
         sans: ['Outfit', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        display: ['Bricolage Grotesque', 'Outfit', 'system-ui', 'sans-serif'],
+        caption: ['Bricolage Grotesque', 'Outfit', 'system-ui', 'sans-serif'],
       },
     },
   },

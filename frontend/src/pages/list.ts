@@ -16,7 +16,7 @@ const STATUS_BORDER: Record<string, string> = {
   Offer: 'border-l-emerald-500 dark:border-l-emerald-400',
   Accepted: 'border-l-teal-500 dark:border-l-teal-400',
   Rejected: 'border-l-rose-400',
-  Withdrawn: 'border-l-stone-400 dark:border-l-stone-500',
+  NoReply: 'border-l-indigo-400 dark:border-l-indigo-400',
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -27,7 +27,7 @@ const STATUS_TEXT: Record<string, string> = {
   Offer: 'text-emerald-600 dark:text-emerald-400',
   Accepted: 'text-teal-600 dark:text-teal-400',
   Rejected: 'text-rose-500 dark:text-rose-400',
-  Withdrawn: 'text-stone-400 dark:text-stone-500',
+  NoReply: 'text-indigo-600 dark:text-indigo-400',
 }
 
 const CONF_FILL: Record<number, string> = {
@@ -57,6 +57,8 @@ export async function ListPage(): Promise<HTMLElement> {
   const urlParams = new URLSearchParams(window.location.search)
   let statusFilter = urlParams.get('status') || ''
   let sourceFilter = urlParams.get('source') || ''
+  let hasInterviewsFilter = urlParams.get('has_interviews') === '1'
+  let hasReplyFilter = urlParams.get('has_reply') === '1'
   let searchQuery = ''
   let sortValue = localStorage.getItem('jc-sort') || 'created_at:desc'
   let currentPage = 1
@@ -68,7 +70,20 @@ export async function ListPage(): Promise<HTMLElement> {
   const content = document.createElement('div')
   content.className = 'space-y-6 stagger'
 
-  const hasActiveFilters = () => !!(statusFilter || sourceFilter || searchQuery)
+  const hasActiveFilters = () => !!(statusFilter || sourceFilter || hasInterviewsFilter || hasReplyFilter || searchQuery)
+
+  /** Rewrite the querystring from the live filter state. Clearing one chip used
+   *  to reset the URL to a bare `/applications`, silently dropping the other
+   *  filters from the address bar even though they stayed applied. */
+  const syncUrl = () => {
+    const q = new URLSearchParams()
+    if (statusFilter) q.set('status', statusFilter)
+    if (sourceFilter) q.set('source', sourceFilter)
+    if (hasInterviewsFilter) q.set('has_interviews', '1')
+    if (hasReplyFilter) q.set('has_reply', '1')
+    const qs = q.toString()
+    window.history.replaceState({}, '', `/applications${qs ? '?' + qs : ''}`)
+  }
 
   function renderEmpty(): string {
     if (hasActiveFilters()) return `
@@ -296,6 +311,8 @@ export async function ListPage(): Promise<HTMLElement> {
     const resp = await api.applications.list({
       status: statusFilter,
       source: sourceFilter,
+      has_interviews: hasInterviewsFilter,
+      has_reply: hasReplyFilter,
       search: searchQuery,
       sort: sortField,
       dir: sortDir,
@@ -371,14 +388,38 @@ export async function ListPage(): Promise<HTMLElement> {
           </div>
         </div>
 
-        ${sourceFilter ? `
-        <div id="source-chip" class="flex items-center gap-2 chip-enter">
-          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
-            ${t('list.source_filter')}: ${esc(sourceFilter)}
-            <button id="clear-source" class="hover:bg-accent/20 rounded-full p-0.5 transition-colors" title="${t('list.clear_source')}">
-              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-          </span>
+        ${sourceFilter || hasInterviewsFilter || hasReplyFilter ? `
+        <div class="flex items-center gap-2 flex-wrap">
+          ${sourceFilter ? `
+          <div id="source-chip" class="flex items-center chip-enter">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
+              ${t('list.source_filter')}: ${esc(sourceFilter)}
+              <button id="clear-source" class="hover:bg-accent/20 rounded-full p-0.5 transition-colors" title="${t('list.clear_source')}">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </span>
+          </div>
+          ` : ''}
+          ${hasReplyFilter ? `
+          <div id="has-reply-chip" class="flex items-center chip-enter">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
+              ${t('list.has_reply_filter')}
+              <button id="clear-has-reply" class="hover:bg-accent/20 rounded-full p-0.5 transition-colors" title="${t('list.clear_has_reply')}">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </span>
+          </div>
+          ` : ''}
+          ${hasInterviewsFilter ? `
+          <div id="has-interviews-chip" class="flex items-center chip-enter">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
+              ${t('list.has_interviews_filter')}
+              <button id="clear-has-interviews" class="hover:bg-accent/20 rounded-full p-0.5 transition-colors" title="${t('list.clear_has_interviews')}">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </span>
+          </div>
+          ` : ''}
         </div>
         ` : ''}
 
@@ -458,15 +499,31 @@ export async function ListPage(): Promise<HTMLElement> {
       content.querySelector('#next-page')?.addEventListener('click', () => {
         currentPage++; load()
       })
+      const dismissChip = (selector: string) => {
+        const chip = content.querySelector(selector)
+        if (!chip) return
+        chip.classList.replace('chip-enter', 'chip-exit')
+        chip.addEventListener('animationend', () => chip.remove(), { once: true })
+      }
       content.querySelector('#clear-source')?.addEventListener('click', () => {
         sourceFilter = ''
         currentPage = 1
-        window.history.replaceState({}, '', '/applications')
-        const chip = content.querySelector('#source-chip')
-        if (chip) {
-          chip.classList.replace('chip-enter', 'chip-exit')
-          chip.addEventListener('animationend', () => chip.remove(), { once: true })
-        }
+        syncUrl()
+        dismissChip('#source-chip')
+        load()
+      })
+      content.querySelector('#clear-has-reply')?.addEventListener('click', () => {
+        hasReplyFilter = false
+        currentPage = 1
+        syncUrl()
+        dismissChip('#has-reply-chip')
+        load()
+      })
+      content.querySelector('#clear-has-interviews')?.addEventListener('click', () => {
+        hasInterviewsFilter = false
+        currentPage = 1
+        syncUrl()
+        dismissChip('#has-interviews-chip')
         load()
       })
 
