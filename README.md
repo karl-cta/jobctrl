@@ -25,6 +25,7 @@
 - **Auto-fill from URL** by pasting a job listing link (extracts company, title, salary via JSON-LD / Open Graph)
 - **Dashboard** with stats, pipeline visualization, charts, top sources, and follow-up reminders
 - **Follow-up reminders** for applications with no response after an interview (snooze or dismiss)
+- **Automatic "no reply"** moves applications with no answer after 30 days out of your pending pile
 - **Duplicate detection** warns you when applying to a company you've already contacted
 - **Bulk actions** to change status or delete multiple applications at once
 - **Sort and filter** by date, company, status, confidence, interest, and source
@@ -62,6 +63,17 @@ make build     # frontend + Go binary
 |----------|---------|-------------|
 | `JOB_CTRL_DB_PATH` | `job-ctrl.db` | SQLite database path |
 | `JOB_CTRL_ADDR` | `:8080` | Listen address |
+| `JOB_CTRL_NO_REPLY_DAYS` | `30` | Days before an unanswered application becomes "No reply" (`0` disables) |
+
+## Upgrading
+
+Your data lives in a single SQLite file and every upgrade is designed to keep it intact:
+
+- **Automatic backup.** Before a schema migration runs on an existing database, the app writes a consistent snapshot next to it (`job-ctrl.db.backup-<timestamp>`) and logs its path. Keep or delete these files as you like.
+- **Migrations are additive.** Nothing is deleted from your history. The one status that was removed in this version, "Withdrawn", is mapped back to "Applied" with a visible entry in each affected application's timeline. Applications left unanswered for more than 30 days then move to "No reply" on their own (see `JOB_CTRL_NO_REPLY_DAYS`).
+- **Old exports still import.** A JSON backup made with a previous version restores cleanly: legacy statuses are mapped, and interviews that older versions silently dropped ("Screening" type, "Rejected" outcome) are now kept. Anything the importer cannot take is logged rather than lost.
+
+To roll back an upgrade, stop the app and copy the backup file over `job-ctrl.db`.
 
 ## Development
 

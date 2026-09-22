@@ -52,11 +52,17 @@ var validStatuses = map[models.ApplicationStatus]bool{
 	models.StatusWishlist: true, models.StatusApplied: true,
 	models.StatusScreening: true, models.StatusInterviewing: true,
 	models.StatusOffer: true, models.StatusAccepted: true,
-	models.StatusRejected: true, models.StatusWithdrawn: true,
+	models.StatusRejected: true, models.StatusNoReply: true,
+}
+
+// legacyStatuses maps statuses that no longer exist to their replacement,
+// mirroring the SQL migrations so that old exports import cleanly.
+var legacyStatuses = map[string]models.ApplicationStatus{
+	"Withdrawn": models.StatusApplied, // migration 006
 }
 
 var validInterviewTypes = map[models.InterviewType]bool{
-	models.InterviewPhone: true, models.InterviewVideo: true,
+	models.InterviewScreening: true, models.InterviewPhone: true, models.InterviewVideo: true,
 	models.InterviewOnsite: true, models.InterviewTechnical: true,
 	models.InterviewHR: true, models.InterviewCulture: true,
 	models.InterviewFinal: true,
@@ -65,6 +71,7 @@ var validInterviewTypes = map[models.InterviewType]bool{
 var validInterviewOutcomes = map[models.InterviewOutcome]bool{
 	models.OutcomePassed: true, models.OutcomeFailed: true,
 	models.OutcomePending: true, models.OutcomeCancelled: true,
+	models.OutcomeRejected: true,
 }
 
 func validateInterview(iv *models.Interview) error {
@@ -168,6 +175,18 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 		query += " AND a.source = ?"
 		args = append(args, sourceFilter)
 	}
+	// has_interviews=1: only applications that landed a non-cancelled
+	// interview. The dashboard's "interviews" tile links here.
+	hasInterviews := q.Get("has_interviews") == "1" || q.Get("has_interviews") == "true"
+	if hasInterviews {
+		query += " AND EXISTS (SELECT 1 FROM interviews i WHERE i.application_id = a.id AND COALESCE(i.outcome, '') != 'Cancelled')"
+	}
+	// has_reply=1: the company answered, whatever the answer. The dashboard's
+	// "replies" tile links here.
+	hasReply := q.Get("has_reply") == "1" || q.Get("has_reply") == "true"
+	if hasReply {
+		query += " AND a.status IN ('Screening', 'Interviewing', 'Offer', 'Accepted', 'Rejected')"
+	}
 
 	allowed := map[string]bool{
 		"created_at": true, "updated_at": true, "company_name": true,
@@ -197,6 +216,12 @@ func (h *Handler) ListApplications(w http.ResponseWriter, r *http.Request) {
 	if sourceFilter != "" {
 		countQuery += " AND a.source = ?"
 		countArgs = append(countArgs, sourceFilter)
+	}
+	if hasInterviews {
+		countQuery += " AND EXISTS (SELECT 1 FROM interviews i WHERE i.application_id = a.id AND COALESCE(i.outcome, '') != 'Cancelled')"
+	}
+	if hasReply {
+		countQuery += " AND a.status IN ('Screening', 'Interviewing', 'Offer', 'Accepted', 'Rejected')"
 	}
 	var total int
 	if err := h.db.QueryRowContext(r.Context(), countQuery, countArgs...).Scan(&total); err != nil {
@@ -437,7 +462,7 @@ func (h *Handler) DeleteApplication(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) BulkUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		IDs    []string                `json:"ids"`
+		IDs    []string                 `json:"ids"`
 		Status models.ApplicationStatus `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -766,16 +791,12 @@ func (h *Handler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	stats := models.Stats{
-		ByStatus:        map[string]int{},
-		AvgDaysInStatus: map[string]float64{},
-	}
+	stats := models.Stats{ByStatus: map[string]int{}}
 
 	if err := h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications`).Scan(&stats.Total); err != nil {
 		log.Printf("GetStats total: %v", err)
 	}
 
-	// Count by status
 	if rows, err := h.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM applications GROUP BY status`); err != nil {
 		log.Printf("GetStats byStatus: %v", err)
 	} else {
@@ -796,53 +817,15 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 		stats.ByStatus[string(models.StatusOffer)] +
 		stats.ByStatus[string(models.StatusAccepted)] +
 		stats.ByStatus[string(models.StatusRejected)]
-	applied := stats.ByStatus[string(models.StatusApplied)] + responded
+	// NoReply applications were sent like any other, they just never got an
+	// answer: they belong to the "applied" pool but never to "responded".
+	applied := stats.ByStatus[string(models.StatusApplied)] +
+		stats.ByStatus[string(models.StatusNoReply)] + responded
 	if applied > 0 {
 		stats.ResponseRate = float64(responded) / float64(applied) * 100
 	}
 
-	offers := stats.ByStatus[string(models.StatusOffer)] + stats.ByStatus[string(models.StatusAccepted)]
-	if applied > 0 {
-		stats.OfferRate = float64(offers) / float64(applied) * 100
-	}
-
-	if err := h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications WHERE status IN ('Screening', 'Interviewing')`).Scan(&stats.ActiveInterviews); err != nil {
-		log.Printf("GetStats activeInterviews: %v", err)
-	}
-
-	if err := h.db.QueryRowContext(ctx, `SELECT AVG(salary) FROM applications WHERE salary IS NOT NULL`).Scan(&stats.AvgSalary); err != nil {
-		log.Printf("GetStats avgSalary: %v", err)
-	}
-
-	if salaryRows, err := h.db.QueryContext(ctx, `SELECT
-		CASE
-			WHEN salary < 30000 THEN '< 30k'
-			WHEN salary < 40000 THEN '30-40k'
-			WHEN salary < 50000 THEN '40-50k'
-			WHEN salary < 60000 THEN '50-60k'
-			WHEN salary < 70000 THEN '60-70k'
-			WHEN salary < 80000 THEN '70-80k'
-			WHEN salary < 90000 THEN '80-90k'
-			WHEN salary < 100000 THEN '90-100k'
-			ELSE '100k+'
-		END as range_bucket,
-		COUNT(*) as c
-		FROM applications WHERE salary IS NOT NULL
-		GROUP BY range_bucket ORDER BY salary`); err != nil {
-		log.Printf("GetStats salaryDist: %v", err)
-	} else {
-		defer salaryRows.Close()
-		for salaryRows.Next() {
-			var b models.SalaryBucket
-			if err := salaryRows.Scan(&b.Range, &b.Count); err != nil {
-				log.Printf("GetStats salaryDist scan: %v", err)
-				continue
-			}
-			stats.SalaryDistribution = append(stats.SalaryDistribution, b)
-		}
-	}
-
-	if sourceRows, err := h.db.QueryContext(ctx, `SELECT source, COUNT(*) as c FROM applications WHERE source IS NOT NULL AND source != '' GROUP BY source ORDER BY c DESC LIMIT 5`); err != nil {
+	if sourceRows, err := h.db.QueryContext(ctx, `SELECT source, COUNT(*) as c FROM applications WHERE source IS NOT NULL AND source != '' GROUP BY source ORDER BY c DESC, source ASC`); err != nil {
 		log.Printf("GetStats topSources: %v", err)
 	} else {
 		defer sourceRows.Close()
@@ -856,55 +839,60 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// strftime needs plain datetime; strip RFC3339 T and Z from stored values.
-	if timeRows, err := h.db.QueryContext(ctx, `SELECT
-		strftime('%Y-W%W', replace(replace(created_at, 'T', ' '), 'Z', '')) as period,
-		COUNT(*) as c
+	// Activity heatmap: daily count of events over the last 180 days:
+	// applications created, timeline events, and interviews actually held.
+	if heatRows, err := h.db.QueryContext(ctx, `SELECT day, SUM(c) as total FROM (
+		SELECT date(replace(replace(created_at, 'T', ' '), 'Z', '')) as day, COUNT(*) as c
 		FROM applications
-		WHERE created_at >= datetime('now', '-84 days')
-		GROUP BY period ORDER BY period`); err != nil {
-		log.Printf("GetStats overTime: %v", err)
+		WHERE created_at >= datetime('now', '-180 days')
+		GROUP BY day
+		UNION ALL
+		SELECT date(replace(replace(created_at, 'T', ' '), 'Z', '')) as day, COUNT(*) as c
+		FROM timeline_events
+		WHERE created_at >= datetime('now', '-180 days')
+		GROUP BY day
+		UNION ALL
+		SELECT date(replace(replace(scheduled_at, 'T', ' '), 'Z', '')) as day, COUNT(*) as c
+		FROM interviews
+		WHERE scheduled_at IS NOT NULL
+		  AND COALESCE(outcome, '') != 'Cancelled'
+		  AND scheduled_at >= datetime('now', '-180 days')
+		  AND scheduled_at <= datetime('now')
+		GROUP BY day
+	) GROUP BY day ORDER BY day`); err != nil {
+		log.Printf("GetStats heatmap: %v", err)
 	} else {
-		defer timeRows.Close()
-		for timeRows.Next() {
-			var p models.TimeSeriesPoint
-			if err := timeRows.Scan(&p.Period, &p.Count); err != nil {
-				log.Printf("GetStats overTime scan: %v", err)
+		defer heatRows.Close()
+		for heatRows.Next() {
+			var d models.ActivityDay
+			if err := heatRows.Scan(&d.Date, &d.Count); err != nil {
+				log.Printf("GetStats heatmap scan: %v", err)
 				continue
 			}
-			stats.OverTime = append(stats.OverTime, p)
+			stats.ActivityHeatmap = append(stats.ActivityHeatmap, d)
 		}
 	}
 
-	if daysRows, err := h.db.QueryContext(ctx, `SELECT
-		te1.description,
-		AVG(julianday(replace(replace(te2.created_at, 'T', ' '), 'Z', ''))
-		  - julianday(replace(replace(te1.created_at, 'T', ' '), 'Z', '')))
-		FROM timeline_events te1
-		INNER JOIN timeline_events te2 ON te1.application_id = te2.application_id
-			AND te2.event_type = 'status_change'
-			AND te2.created_at > te1.created_at
-		WHERE te1.event_type = 'status_change'
-		GROUP BY te1.description`); err != nil {
-		log.Printf("GetStats avgDays: %v", err)
+	if actRows, err := h.db.QueryContext(ctx, `SELECT te.created_at, te.event_type, te.description,
+		a.id, a.company_name, a.job_title, a.status
+		FROM timeline_events te
+		JOIN applications a ON a.id = te.application_id
+		ORDER BY replace(replace(te.created_at, 'T', ' '), 'Z', '') DESC
+		LIMIT 10`); err != nil {
+		log.Printf("GetStats recentActivity: %v", err)
 	} else {
-		defer daysRows.Close()
-		for daysRows.Next() {
-			var desc string
-			var avgDays float64
-			if err := daysRows.Scan(&desc, &avgDays); err != nil {
-				log.Printf("GetStats avgDays scan: %v", err)
+		defer actRows.Close()
+		for actRows.Next() {
+			var item models.ActivityItem
+			if err := actRows.Scan(&item.Time, &item.EventType, &item.Description,
+				&item.ApplicationID, &item.CompanyName, &item.JobTitle, &item.Status); err != nil {
+				log.Printf("GetStats recentActivity scan: %v", err)
 				continue
 			}
-			// Extract the target status from "Status changed from X to Y"
-			if idx := strings.LastIndex(desc, " to "); idx >= 0 {
-				status := desc[idx+4:]
-				stats.AvgDaysInStatus[status] = avgDays
-			}
+			stats.RecentActivity = append(stats.RecentActivity, item)
 		}
 	}
 
-	// Follow-up reminders: interviews > 10 days ago with no status change
 	nowStr := sqliteTime(time.Now().UTC())
 	tenDaysAgo := sqliteTime(time.Now().UTC().AddDate(0, 0, -10))
 	if fuRows, err := h.db.QueryContext(r.Context(), `SELECT a.id, a.company_name, a.job_title, a.status, MAX(i.scheduled_at) as last_iv
@@ -922,6 +910,15 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	now := time.Now().UTC()
+	sentApps := h.loadSentApps(ctx)
+	replyEvents := h.loadReplyEvents(ctx)
+	interviewTimes := h.loadInterviewTimes(ctx)
+	stats.Period = computePeriodStats(now, parsePeriod(r.URL.Query().Get("period")), sentApps, interviewTimes)
+	stats.Weekly = computeWeekly(now, sentApps, replyEvents)
+	stats.UpcomingInterviews = countUpcomingInterviews(now, interviewTimes)
+	stats.ActiveProcesses = h.loadActiveProcesses(ctx, now)
 
 	writeJSON(w, http.StatusOK, stats)
 }
@@ -1098,7 +1095,6 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	for _, a := range payload.Applications {
-		// Defaults
 		if a.SalaryCurrency == "" {
 			a.SalaryCurrency = "EUR"
 		}
@@ -1111,12 +1107,18 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 		if a.WorkMode == "" {
 			a.WorkMode = models.WorkModeHybrid
 		}
+		// Legacy statuses from older exports are mapped instead of dropped:
+		// losing a whole application on restore is never acceptable.
+		if mapped, ok := legacyStatuses[string(a.Status)]; ok {
+			log.Printf("Import: %q has legacy status %q, importing as %q", a.CompanyName, a.Status, mapped)
+			a.Status = mapped
+		}
 		if err := validateApplication(&a); err != nil {
+			log.Printf("Import: skipping %q: %v", a.CompanyName, err)
 			skipped++
 			continue
 		}
 
-		// Duplicate check by ID
 		if a.ID != "" {
 			var exists int
 			if err := h.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM applications WHERE id = ?", a.ID).Scan(&exists); err != nil {
@@ -1130,7 +1132,6 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 			a.ID = uuid.New().String()
 		}
 
-		// Preserve or set timestamps
 		if a.CreatedAt.IsZero() {
 			a.CreatedAt = now
 		}
@@ -1160,7 +1161,6 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Import interviews
 		for _, iv := range a.Interviews {
 			if iv.ID == "" {
 				iv.ID = uuid.New().String()
@@ -1169,7 +1169,8 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 			if iv.CreatedAt.IsZero() {
 				iv.CreatedAt = now
 			}
-			if validateInterview(&iv) != nil {
+			if err := validateInterview(&iv); err != nil {
+				log.Printf("Import: skipping interview %s of %q: %v", iv.ID, a.CompanyName, err)
 				continue
 			}
 			var scheduledStr *string
@@ -1187,7 +1188,6 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Import contacts
 		for _, c := range a.Contacts {
 			if c.ID == "" {
 				c.ID = uuid.New().String()
@@ -1207,7 +1207,6 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Import timeline events
 		for _, e := range a.TimelineEvents {
 			if e.ID == "" {
 				e.ID = uuid.New().String()
@@ -1439,4 +1438,3 @@ func escapeLike(s string) string {
 func sqliteTime(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
-

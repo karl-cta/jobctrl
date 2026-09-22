@@ -64,6 +64,7 @@ func New(db *sql.DB, frontendFS embed.FS, version string) http.Handler {
 
 		r.Get("/sources", h.ListSources)
 		r.Get("/stats", h.GetStats)
+		r.Get("/activity", h.GetActivityByDay)
 		r.Get("/export", h.Export)
 		r.Post("/import", h.Import)
 		r.Get("/export/csv", h.ExportCSV)

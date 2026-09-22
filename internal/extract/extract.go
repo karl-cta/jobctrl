@@ -143,7 +143,7 @@ type orgLD struct {
 }
 
 type locationLD struct {
-	Type    string    `json:"@type"`
+	Type    string      `json:"@type"`
 	Address interface{} `json:"address"` // string or object
 }
 
@@ -504,13 +504,13 @@ func cleanDomain(host string) string {
 	host = strings.TrimPrefix(host, "www.")
 	// Match known job boards by any domain part (handles ie.indeed.com, fr.linkedin.com, etc.)
 	known := map[string]string{
-		"indeed":      "Indeed",
-		"linkedin":    "LinkedIn",
-		"glassdoor":   "Glassdoor",
-		"monster":     "Monster",
+		"indeed":             "Indeed",
+		"linkedin":           "LinkedIn",
+		"glassdoor":          "Glassdoor",
+		"monster":            "Monster",
 		"welcometothejungle": "Welcome to the Jungle",
-		"wttj":        "Welcome to the Jungle",
-		"jobs":        host, // jobs.ie etc — keep full domain
+		"wttj":               "Welcome to the Jungle",
+		"jobs":               host, // jobs.ie etc — keep full domain
 	}
 	for _, part := range strings.Split(host, ".") {
 		if name, ok := known[part]; ok {
