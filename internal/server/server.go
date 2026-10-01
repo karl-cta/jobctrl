@@ -15,11 +15,11 @@ import (
 )
 
 // contentSecurityPolicy allows no inline script. Inline styles stay allowed
-// for the style="..." attributes in the templates; fonts come from Google
-// Fonts and company favicons from any https host.
+// for the style="..." attributes in the templates; fonts are served by the
+// app and company favicons come from any https host.
 const contentSecurityPolicy = "default-src 'self'; script-src 'self'; " +
-	"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-	"font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; " +
+	"style-src 'self' 'unsafe-inline'; " +
+	"font-src 'self'; img-src 'self' data: https:; " +
 	"connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; " +
 	"form-action 'self'; object-src 'none'"
 

@@ -16,6 +16,7 @@ Your data is safe across this upgrade: the database is snapshotted before the on
 - A Content-Security-Policy is sent, and several places where imported or fetched data could inject HTML or script are escaped (application ids, favicons, the status filter in the URL, the search box, email links).
 - URL auto-fill checks every connection it opens, including redirects, against private and reserved networks, and ignores `HTTP_PROXY`/`HTTPS_PROXY`.
 - Request bodies are capped at 1 MiB (64 MiB for imports) and the HTTP server has timeouts.
+- Fonts are served by the app: pages no longer load anything from Google Fonts.
 
 ### Dashboard
 - Every indicator opens a list that contains exactly the number shown, for the selected period.
