@@ -8,6 +8,7 @@ frontend/dist/*.css
 
 # Database files
 *.db
+*.db-journal
 *.db-shm
 *.db-wal
 *.db.backup-*

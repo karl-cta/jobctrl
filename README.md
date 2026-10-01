@@ -65,15 +65,25 @@ make build     # frontend + Go binary
 | `JOB_CTRL_ADDR` | `:8080` | Listen address |
 | `JOB_CTRL_NO_REPLY_DAYS` | `30` | Days before an unanswered application becomes "No reply" (`0` disables) |
 
+JobCtrl has no built-in authentication. Keep it on your machine or local network, and do not expose it to the internet without a reverse proxy that adds authentication. The proxy must forward the original `Host` header, port included (nginx: `proxy_set_header Host $http_host;`), otherwise saving changes is rejected as a cross-origin request.
+
 ## Upgrading
 
 Your data lives in a single SQLite file and every upgrade is designed to keep it intact:
 
 - **Automatic backup.** Before a schema migration runs on an existing database, the app writes a consistent snapshot next to it (`job-ctrl.db.backup-<timestamp>`) and logs its path. Keep or delete these files as you like.
-- **Migrations are additive.** Nothing is deleted from your history. The one status that was removed in this version, "Withdrawn", is mapped back to "Applied" with a visible entry in each affected application's timeline. Applications left unanswered for more than 30 days then move to "No reply" on their own (see `JOB_CTRL_NO_REPLY_DAYS`).
+- **Migrations are additive.** Your history is kept. The only rows ever removed are interviews, contacts and timeline entries that still belonged to applications you had deleted: older versions kept them by mistake, and they are cleaned up once. The one status that was removed in this version, "Withdrawn", is mapped back to "Applied" with a visible entry in each affected application's timeline. Applications left unanswered for more than 30 days then move to "No reply" on their own (see `JOB_CTRL_NO_REPLY_DAYS`).
 - **Old exports still import.** A JSON backup made with a previous version restores cleanly: legacy statuses are mapped, and interviews that older versions silently dropped ("Screening" type, "Rejected" outcome) are now kept. Anything the importer cannot take is logged rather than lost.
 
-To roll back an upgrade, stop the app and copy the backup file over `job-ctrl.db`.
+While the app runs, SQLite keeps two companion files next to the database, `job-ctrl.db-wal` and `job-ctrl.db-shm`. To roll back an upgrade, stop the app, delete `job-ctrl.db-wal` and `job-ctrl.db-shm`, then copy the backup file over `job-ctrl.db`. With Docker, the files live in the volume (`docker volume ls` shows its name):
+
+```bash
+docker compose down
+docker run --rm -v <volume>:/data alpine sh -c \
+  'rm -f /data/job-ctrl.db-wal /data/job-ctrl.db-shm && cp /data/job-ctrl.db.backup-<timestamp> /data/job-ctrl.db'
+```
+
+Then pin the previous image tag in `docker-compose.yml` before starting again, or the new version will migrate the database once more.
 
 ## Development
 

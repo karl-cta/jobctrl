@@ -9,6 +9,11 @@ frontend/dist
 *.db-journal
 *.db-wal
 *.db-shm
+*.db.backup-*
 README.md
 LICENSE
 Makefile
+job-ctrl
+docs
+agents
+.claude
