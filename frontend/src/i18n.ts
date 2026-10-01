@@ -20,13 +20,15 @@ const fr: Translations = {
   'dashboard.period_label': 'Période affichée',
   'dashboard.period_30': '30j',
   'dashboard.period_90': '90j',
-  'dashboard.period_365': '1a',
+  'dashboard.period_365': '1 an',
   'dashboard.period_all': 'tout',
   'dashboard.period_error': 'Impossible de charger cette période',
+  'dashboard.load_error': 'Impossible de charger ton tableau de bord pour l\'instant.',
   'dashboard.no_data': 'Aucune donnée',
   'dashboard.data_menu': 'Options',
   'dashboard.export': 'Sauvegarder mes données (JSON)',
   'dashboard.export_csv': 'Exporter en tableur (CSV)',
+  'dashboard.export_error': 'La sauvegarde n\'a pas pu être créée. Réessaie dans un instant.',
   'dashboard.import': 'Restaurer une sauvegarde',
   'dashboard.import_success': 'importée(s)',
   'dashboard.import_skipped': 'ignorée(s)',
@@ -48,6 +50,7 @@ const fr: Translations = {
   'dashboard.reorder_done': 'Terminé',
   'dashboard.reorder_reset': 'Réinitialiser',
   'dashboard.reorder_reset_done': 'Ordre par défaut restauré',
+  'dashboard.reorder_moved': '{panel} : position {n} sur {total}',
   'dashboard.panel_kpis': 'Indicateurs clés',
   'dashboard.kpi_link': 'Voir les candidatures : {label}',
   'dashboard.kpi_sent': 'Candidatures',
@@ -67,15 +70,20 @@ const fr: Translations = {
   'dashboard.funnel': 'Parcours',
   'dashboard.funnel_last_days': '{n} derniers jours',
   'dashboard.funnel_all_time': 'toutes périodes',
-  'dashboard.funnel_sub': 'sur {sent} candidatures envoyées ({period})',
+  'dashboard.funnel_sub_one': 'sur {sent} candidature envoyée ({period})',
+  'dashboard.funnel_sub_other': 'sur {sent} candidatures envoyées ({period})',
   'dashboard.funnel_responded': 'ont reçu une réponse',
+  'dashboard.funnel_responded_rejected_one': 'dont {n} refus',
+  'dashboard.funnel_responded_rejected_other': 'dont {n} refus',
   'dashboard.funnel_interviewing': 'ont mené à un entretien',
   'dashboard.funnel_offer': 'ont abouti à une offre',
   'dashboard.funnel_accepted': 'ont été acceptées',
   'dashboard.funnel_rest': 'Les autres : {rejected} refus · {no_reply} sans réponse · {pending} en attente',
+  'dashboard.funnel_others': 'Les autres : {no_reply} sans réponse · {pending} en attente',
   'dashboard.heatmap_title': 'Activité · 6 mois',
   'dashboard.heatmap_desc': 'chaque case = un jour',
-  'dashboard.heatmap_total': 'tot. {n} interactions',
+  'dashboard.heatmap_total_one': '{n} interaction au total',
+  'dashboard.heatmap_total_other': '{n} interactions au total',
   'dashboard.heatmap_event_one': 'événement',
   'dashboard.heatmap_event_other': 'événements',
   'dashboard.heatmap_day_empty': 'aucun événement ce jour-là',
@@ -88,7 +96,8 @@ const fr: Translations = {
   'dashboard.heatmap_less': 'moins',
   'dashboard.heatmap_more': 'plus',
   'dashboard.status_breakdown': 'Répartition par statut',
-  'dashboard.status_breakdown_sub': 'où en sont tes {n} candidatures aujourd\'hui',
+  'dashboard.status_breakdown_sub_one': 'où en est ta candidature aujourd\'hui',
+  'dashboard.status_breakdown_sub_other': 'où en sont tes {n} candidatures aujourd\'hui',
   'dashboard.active_title': 'En cours',
   'dashboard.active_sub_one': '{n} processus actif',
   'dashboard.active_sub_other': '{n} processus actifs',
@@ -106,7 +115,7 @@ const fr: Translations = {
   'work_mode.Hybrid': 'Hybride',
   'work_mode.Remote': 'Télétravail',
   // Interview types and outcomes — shared by the detail page and the dashboard.
-  'interview.type.Screening': 'Screening',
+  'interview.type.Screening': 'Présélection',
   'interview.type.Phone': 'Téléphone',
   'interview.type.Video': 'Visio',
   'interview.type.On-site': 'Sur site',
@@ -121,11 +130,12 @@ const fr: Translations = {
   'interview.outcome.Rejected': 'Refusé',
   'dashboard.sources_title': 'Sources',
   'dashboard.sources_sub': 'candidatures par source',
-  'dashboard.sources_more': 'Voir les {n} autres sources',
+  'dashboard.sources_more_one': 'Voir {n} autre source',
+  'dashboard.sources_more_other': 'Voir les {n} autres sources',
   'dashboard.sources_less': 'Réduire',
   'dashboard.activity_title': 'Derniers mouvements',
   'dashboard.activity_desc': 'fil chronologique',
-  'dashboard.event.created': 'envoyée',
+  'dashboard.event.created': 'ajoutée',
   'dashboard.event.status_change': 'statut',
   'dashboard.event.interview_added': 'entretien',
   'dashboard.event.interview_held': 'entretien tenu',
@@ -140,6 +150,8 @@ const fr: Translations = {
   'list.new': 'Nouvelle candidature',
   'list.search': 'Rechercher entreprise ou poste...',
   'list.all_statuses': 'Tous les statuts',
+  'list.multiple_statuses': 'Plusieurs statuts',
+  'list.clear_status': 'Retirer le filtre statut',
   'list.empty': 'Aucune candidature pour l\'instant',
   'list.empty_hint': 'C\'est le moment de commencer, chaque candidature compte.',
   'list.add_first': 'Ajouter la première',
@@ -153,12 +165,17 @@ const fr: Translations = {
   'list.result_count_other': 'candidatures',
   'list.empty_filtered': 'Aucun résultat avec ces filtres',
   'list.empty_filtered_hint': 'Essayez d\'élargir votre recherche ou de retirer un filtre.',
+  'list.load_error': 'Impossible de charger tes candidatures pour l\'instant.',
   'list.source_filter': 'Source',
   'list.clear_source': 'Retirer le filtre source',
   'list.has_reply_filter': 'Avec réponse',
   'list.clear_has_reply': 'Retirer le filtre réponse',
   'list.has_interviews_filter': 'Avec entretien',
   'list.clear_has_interviews': 'Retirer le filtre entretien',
+  'list.sent_filter': 'Candidatures envoyées',
+  'list.clear_sent': 'Retirer le filtre candidatures envoyées',
+  'list.period_filter': '{n} derniers jours',
+  'list.clear_period': 'Retirer le filtre période',
   'list.sort': 'Trier',
   'list.sort_date_desc': 'Plus récentes',
   'list.sort_date_asc': 'Plus anciennes',
@@ -167,8 +184,8 @@ const fr: Translations = {
   'list.sort_status': 'Statut',
   'list.sort_confidence_desc': 'Confiance ↓',
   'list.sort_confidence_asc': 'Confiance ↑',
-  'list.sort_rating_desc': 'Motivation ↓',
-  'list.sort_rating_asc': 'Motivation ↑',
+  'list.sort_rating_desc': 'Intérêt ↓',
+  'list.sort_rating_asc': 'Intérêt ↑',
   'list.page_prev': 'Page précédente',
   'list.page_next': 'Page suivante',
   'list.kanban_filter_hint': 'Utilisez les filtres pour affiner.',
@@ -204,15 +221,22 @@ const fr: Translations = {
   'detail.company_info': 'Entreprise',
   'detail.job_link': "Voir l'offre",
   'detail.save': 'Sauvegarder',
+  'detail.saved': 'Modifications sauvegardées',
   'detail.confirm_delete_interview': 'Supprimer cet entretien ?',
   'detail.confirm_delete_contact': 'Supprimer ce contact ?',
   'detail.interview_add_title': 'Ajouter un entretien',
   'detail.interview_edit_title': "Modifier l'entretien",
   'detail.contact_add_title': 'Ajouter un contact',
   'detail.contact_edit_title': 'Modifier le contact',
+  'detail.interview_added': 'Entretien ajouté',
+  'detail.interview_updated': 'Entretien modifié',
+  'detail.contact_added': 'Contact ajouté',
+  'detail.contact_updated': 'Contact modifié',
   'detail.interview_round': 'Tour',
   'detail.interview_type': 'Type',
   'detail.interview_scheduled': 'Date / Heure',
+  'detail.interview_date': 'Date',
+  'detail.interview_time': 'Heure',
   'detail.interview_duration': 'Durée (min)',
   'detail.interview_outcome': 'Résultat',
   'detail.interview_outcome_none': 'Pas encore',
@@ -221,7 +245,7 @@ const fr: Translations = {
   'detail.interview_notes': 'Notes',
   'detail.contact_name': 'Nom',
   'detail.contact_role': 'Rôle',
-  'detail.contact_email': 'Email',
+  'detail.contact_email': 'E-mail',
   'detail.contact_phone': 'Téléphone',
   'detail.contact_linkedin': 'LinkedIn',
   'detail.contact_notes': 'Notes',
@@ -231,6 +255,8 @@ const fr: Translations = {
   'detail.no_interviews': 'Aucun entretien.',
   'detail.no_contacts': 'Aucun contact.',
   'detail.no_timeline': 'Aucun historique.',
+  'detail.confidence_label': 'Ma confiance : {level}',
+  'detail.confidence_unset': 'Ma confiance : non renseignée',
 
   // Form
   'form.title_new': 'Nouvelle candidature',
@@ -252,10 +278,11 @@ const fr: Translations = {
   'form.work_mode': 'Mode de travail',
   'form.location': 'Localisation poste',
   'form.source': 'Source',
-  'form.source_placeholder': 'LinkedIn, Indeed, referral...',
+  'form.source_placeholder': 'LinkedIn, Indeed, cooptation...',
   'form.description': 'Description du poste',
   'form.salary_status': 'Salaire & Statut',
   'form.salary': 'Salaire (€/an)',
+  'form.salary_in': 'Salaire ({currency}/an)',
   'form.status': 'Statut',
   'form.rating': 'Mon intérêt',
   'form.rating_1': 'Bof',
@@ -272,8 +299,8 @@ const fr: Translations = {
   'form.notes_section': 'Notes & Préparation',
   'form.notes': 'Notes',
   'form.notes_placeholder': 'Observations, ressenti...',
-  'form.speech': 'Pitch / Préparation entretien',
-  'form.speech_placeholder': 'Votre elevator pitch, points clés à mentionner...',
+  'form.speech': 'Argumentaire / Préparation d\'entretien',
+  'form.speech_placeholder': 'Votre présentation en 30 secondes, points clés à mentionner...',
   'form.unsaved_changes': 'Vous avez des modifications non sauvegardées. Quitter quand même ?',
   'form.duplicate_title': 'Candidature existante',
   'form.duplicate_message': 'Vous avez déjà candidaté chez cette entreprise :',
@@ -286,7 +313,10 @@ const fr: Translations = {
   'form.created': 'Candidature créée',
   'form.error': 'Une erreur est survenue',
   'form.field_required': 'Ce champ est obligatoire',
+  'form.load_error': 'Impossible de charger cette candidature',
+  'form.retry': 'Réessayer',
   'form.extract_url': 'URL de l\'offre',
+  'form.extract_url_label': 'Préremplir depuis une offre',
   'form.extract_url_placeholder': 'Coller l\'URL de l\'offre pour remplir automatiquement...',
   'form.extract_btn': 'Extraire',
   'form.extracting': 'Extraction...',
@@ -296,7 +326,7 @@ const fr: Translations = {
   'form.extract_partial': 'Ce site bloque l\'extraction — URL et source remplies, le reste est à compléter',
 
   // Statuses
-  'status.Wishlist': 'Wishlist',
+  'status.Wishlist': 'À postuler',
   'status.Applied': 'Candidaté',
   'status.Screening': 'Présélection',
   'status.Interviewing': 'Entretiens',
@@ -308,8 +338,24 @@ const fr: Translations = {
   // only so old timeline events ("… → Retiré") still translate.
   'status.Withdrawn': 'Retiré',
 
+  // Timeline: the server's English descriptions are parsed for their values
+  // only (see translateTimelineEvent).
+  'timeline.created': 'Candidature créée',
+  'timeline.status_change': '{from} → {to}',
+  'timeline.interview_added': 'Entretien tour {round} ({type}) ajouté',
+  'timeline.interview_deleted': 'Entretien supprimé',
+  'timeline.contact_added': 'Contact {name} ajouté',
+  'timeline.contact_deleted': 'Contact supprimé',
+
   // Common
   'common.page_not_found': 'Page non trouvée',
+  'common.page_error': 'Cette page n\'a pas pu s\'afficher.',
+  'common.reload': 'Recharger la page',
+  'common.network_error': 'Impossible de joindre le serveur.',
+  'common.server_unreachable': 'Le serveur ne répond pas pour le moment (code {status}).',
+  'common.server_error': 'Une erreur est survenue côté serveur (code {status}).',
+  'common.retry': 'Réessayer',
+  'common.load_error_hint': 'Vérifie que le serveur JobCtrl est bien lancé, puis réessaie.',
   'common.theme_toggle': 'Changer de thème',
   'common.close': 'Fermer',
   'common.skip_to_content': 'Aller au contenu',
@@ -342,10 +388,12 @@ const en: Translations = {
   'dashboard.period_365': '1y',
   'dashboard.period_all': 'all',
   'dashboard.period_error': 'Could not load this period',
+  'dashboard.load_error': 'Couldn\'t load your dashboard right now.',
   'dashboard.no_data': 'No data',
   'dashboard.data_menu': 'Options',
   'dashboard.export': 'Back up my data (JSON)',
   'dashboard.export_csv': 'Export as spreadsheet (CSV)',
+  'dashboard.export_error': 'The backup could not be created. Try again in a moment.',
   'dashboard.import': 'Restore a backup',
   'dashboard.import_success': 'imported',
   'dashboard.import_skipped': 'skipped',
@@ -367,6 +415,7 @@ const en: Translations = {
   'dashboard.reorder_done': 'Done',
   'dashboard.reorder_reset': 'Reset',
   'dashboard.reorder_reset_done': 'Default order restored',
+  'dashboard.reorder_moved': '{panel}: position {n} of {total}',
   'dashboard.panel_kpis': 'Key metrics',
   'dashboard.kpi_link': 'View applications: {label}',
   'dashboard.kpi_sent': 'Applications',
@@ -386,15 +435,20 @@ const en: Translations = {
   'dashboard.funnel': 'Journey',
   'dashboard.funnel_last_days': 'last {n} days',
   'dashboard.funnel_all_time': 'all time',
-  'dashboard.funnel_sub': 'out of {sent} applications sent ({period})',
+  'dashboard.funnel_sub_one': 'out of {sent} application sent ({period})',
+  'dashboard.funnel_sub_other': 'out of {sent} applications sent ({period})',
   'dashboard.funnel_responded': 'got a reply',
+  'dashboard.funnel_responded_rejected_one': 'including {n} rejection',
+  'dashboard.funnel_responded_rejected_other': 'including {n} rejections',
   'dashboard.funnel_interviewing': 'led to an interview',
   'dashboard.funnel_offer': 'led to an offer',
   'dashboard.funnel_accepted': 'were accepted',
   'dashboard.funnel_rest': 'The rest: {rejected} rejected · {no_reply} no reply · {pending} pending',
+  'dashboard.funnel_others': 'The rest: {no_reply} no reply · {pending} pending',
   'dashboard.heatmap_title': 'Activity · 6 months',
   'dashboard.heatmap_desc': 'each cell is a day',
-  'dashboard.heatmap_total': '{n} interactions total',
+  'dashboard.heatmap_total_one': '{n} interaction total',
+  'dashboard.heatmap_total_other': '{n} interactions total',
   'dashboard.heatmap_event_one': 'event',
   'dashboard.heatmap_event_other': 'events',
   'dashboard.heatmap_day_empty': 'no events that day',
@@ -407,7 +461,8 @@ const en: Translations = {
   'dashboard.heatmap_less': 'less',
   'dashboard.heatmap_more': 'more',
   'dashboard.status_breakdown': 'Status breakdown',
-  'dashboard.status_breakdown_sub': 'where your {n} applications stand today',
+  'dashboard.status_breakdown_sub_one': 'where your application stands today',
+  'dashboard.status_breakdown_sub_other': 'where your {n} applications stand today',
   'dashboard.active_title': 'In progress',
   'dashboard.active_sub_one': '{n} active process',
   'dashboard.active_sub_other': '{n} active processes',
@@ -440,11 +495,12 @@ const en: Translations = {
   'interview.outcome.Rejected': 'Rejected',
   'dashboard.sources_title': 'Sources',
   'dashboard.sources_sub': 'applications per source',
-  'dashboard.sources_more': 'Show {n} more sources',
+  'dashboard.sources_more_one': 'Show {n} more source',
+  'dashboard.sources_more_other': 'Show {n} more sources',
   'dashboard.sources_less': 'Show less',
   'dashboard.activity_title': 'Recent activity',
   'dashboard.activity_desc': 'chronological feed',
-  'dashboard.event.created': 'sent',
+  'dashboard.event.created': 'added',
   'dashboard.event.status_change': 'status',
   'dashboard.event.interview_added': 'interview',
   'dashboard.event.interview_held': 'interview held',
@@ -459,6 +515,8 @@ const en: Translations = {
   'list.new': 'New application',
   'list.search': 'Search company or position...',
   'list.all_statuses': 'All statuses',
+  'list.multiple_statuses': 'Several statuses',
+  'list.clear_status': 'Clear status filter',
   'list.empty': 'No applications yet',
   'list.empty_hint': 'Time to get started — every application counts.',
   'list.add_first': 'Add the first one',
@@ -472,12 +530,17 @@ const en: Translations = {
   'list.result_count_other': 'applications',
   'list.empty_filtered': 'No results with these filters',
   'list.empty_filtered_hint': 'Try broadening your search or removing a filter.',
+  'list.load_error': 'Couldn\'t load your applications right now.',
   'list.source_filter': 'Source',
   'list.clear_source': 'Clear source filter',
   'list.has_reply_filter': 'With reply',
   'list.clear_has_reply': 'Clear reply filter',
   'list.has_interviews_filter': 'With interview',
   'list.clear_has_interviews': 'Clear interview filter',
+  'list.sent_filter': 'Sent applications',
+  'list.clear_sent': 'Clear sent filter',
+  'list.period_filter': 'Last {n} days',
+  'list.clear_period': 'Clear period filter',
   'list.sort': 'Sort',
   'list.sort_date_desc': 'Newest first',
   'list.sort_date_asc': 'Oldest first',
@@ -523,15 +586,22 @@ const en: Translations = {
   'detail.company_info': 'Company',
   'detail.job_link': 'View job',
   'detail.save': 'Save',
+  'detail.saved': 'Changes saved',
   'detail.confirm_delete_interview': 'Delete this interview?',
   'detail.confirm_delete_contact': 'Delete this contact?',
   'detail.interview_add_title': 'Add interview',
   'detail.interview_edit_title': 'Edit interview',
   'detail.contact_add_title': 'Add contact',
   'detail.contact_edit_title': 'Edit contact',
+  'detail.interview_added': 'Interview added',
+  'detail.interview_updated': 'Interview updated',
+  'detail.contact_added': 'Contact added',
+  'detail.contact_updated': 'Contact updated',
   'detail.interview_round': 'Round',
   'detail.interview_type': 'Type',
   'detail.interview_scheduled': 'Date / Time',
+  'detail.interview_date': 'Date',
+  'detail.interview_time': 'Time',
   'detail.interview_duration': 'Duration (min)',
   'detail.interview_outcome': 'Outcome',
   'detail.interview_outcome_none': 'Not yet',
@@ -550,6 +620,8 @@ const en: Translations = {
   'detail.no_interviews': 'No interviews yet.',
   'detail.no_contacts': 'No contacts yet.',
   'detail.no_timeline': 'No activity yet.',
+  'detail.confidence_label': 'My confidence: {level}',
+  'detail.confidence_unset': 'My confidence: not set',
 
   // Form
   'form.title_new': 'New application',
@@ -575,6 +647,7 @@ const en: Translations = {
   'form.description': 'Job description',
   'form.salary_status': 'Salary & Status',
   'form.salary': 'Salary (€/yr)',
+  'form.salary_in': 'Salary ({currency}/yr)',
   'form.status': 'Status',
   'form.rating': 'My interest',
   'form.rating_1': 'Meh',
@@ -605,7 +678,10 @@ const en: Translations = {
   'form.created': 'Application created',
   'form.error': 'An error occurred',
   'form.field_required': 'This field is required',
+  'form.load_error': 'Could not load this application',
+  'form.retry': 'Try again',
   'form.extract_url': 'Job URL',
+  'form.extract_url_label': 'Prefill from a job listing',
   'form.extract_url_placeholder': 'Paste job listing URL to auto-fill fields...',
   'form.extract_btn': 'Extract',
   'form.extracting': 'Extracting...',
@@ -627,8 +703,24 @@ const en: Translations = {
   // only so old timeline events ("… → Withdrawn") still translate.
   'status.Withdrawn': 'Withdrawn',
 
+  // Timeline: the server's English descriptions are parsed for their values
+  // only (see translateTimelineEvent).
+  'timeline.created': 'Application created',
+  'timeline.status_change': 'Status changed from {from} to {to}',
+  'timeline.interview_added': 'Interview round {round} ({type}) added',
+  'timeline.interview_deleted': 'Interview removed',
+  'timeline.contact_added': 'Contact {name} added',
+  'timeline.contact_deleted': 'Contact removed',
+
   // Common
   'common.page_not_found': 'Page not found',
+  'common.page_error': 'This page could not be displayed.',
+  'common.reload': 'Reload the page',
+  'common.network_error': 'Could not reach the server.',
+  'common.server_unreachable': 'The server is not responding right now (code {status}).',
+  'common.server_error': 'Something went wrong on the server (code {status}).',
+  'common.retry': 'Try again',
+  'common.load_error_hint': 'Check that the JobCtrl server is running, then try again.',
   'common.theme_toggle': 'Toggle theme',
   'common.close': 'Close',
   'common.skip_to_content': 'Skip to content',
@@ -640,20 +732,42 @@ const en: Translations = {
 
 const locales: Record<string, Translations> = { fr, en }
 
-let currentLocale = localStorage.getItem('jc-locale') || 'fr'
+// localStorage can throw (site data blocked, some private modes): fall back to
+// French rather than failing to boot.
+function readStoredLocale(): string {
+  try {
+    const saved = localStorage.getItem('jc-locale')
+    if (saved === 'fr' || saved === 'en') return saved
+  } catch { /* storage blocked */ }
+  return 'fr'
+}
+
+let currentLocale = readStoredLocale()
 document.documentElement.lang = currentLocale
 
 export function t(key: string): string {
   return locales[currentLocale]?.[key] ?? locales.fr[key] ?? key
 }
 
+const pluralRules = new Map<string, Intl.PluralRules>()
+
+/** Picks `key_one` or `key_other` by the locale's plural rules: French uses
+ *  the singular for 0 and 1 ("0 relance due"), English only for 1. */
 export function tp(key: string, count: number): string {
-  return count === 1 ? t(`${key}_one`) : t(`${key}_other`)
+  const locale = getDateLocale()
+  let rules = pluralRules.get(locale)
+  if (!rules) {
+    rules = new Intl.PluralRules(locale)
+    pluralRules.set(locale, rules)
+  }
+  return t(`${key}_${rules.select(count) === 'one' ? 'one' : 'other'}`)
 }
 
 export function setLocale(locale: string) {
   currentLocale = locale
-  localStorage.setItem('jc-locale', locale)
+  try {
+    localStorage.setItem('jc-locale', locale)
+  } catch { /* storage blocked: the choice lasts for this page only */ }
   document.documentElement.lang = locale
 }
 
@@ -665,25 +779,40 @@ export function getDateLocale(): string {
   return currentLocale === 'fr' ? 'fr-FR' : 'en-US'
 }
 
+/** Fills each `{name}` in one pass, so a value that contains braces itself
+ *  (a contact name) is never substituted again. */
+function fill(text: string, vars: Record<string, string>): string {
+  return text.replace(/\{(\w+)\}/g, (m, k: string) =>
+    (Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : m))
+}
+
+/** Label for an enum value (`status.NoReply`); unknown values pass through. */
+function enumLabel(prefix: string, value: string): string {
+  const label = t(prefix + value)
+  return label === prefix + value ? value : label
+}
+
+// The server stores timeline descriptions as English sentences (handlers.go,
+// addTimelineEvent). They are only parsed for their values; the wording comes
+// from the timeline.* keys. Anything unrecognised is shown as stored.
 export function translateTimelineEvent(eventType: string, description: string): string {
-  if (currentLocale === 'en') return description
   switch (eventType) {
-    case 'created': return 'Candidature créée'
-    case 'interview_deleted': return 'Entretien supprimé'
-    case 'contact_deleted': return 'Contact supprimé'
+    case 'created': return t('timeline.created')
+    case 'interview_deleted': return t('timeline.interview_deleted')
+    case 'contact_deleted': return t('timeline.contact_deleted')
     case 'status_change': {
       const m = description.match(/from (\w+) to (\w+)/)
-      if (m) return `${t('status.' + m[1])} → ${t('status.' + m[2])}`
+      if (m) return fill(t('timeline.status_change'), { from: enumLabel('status.', m[1]), to: enumLabel('status.', m[2]) })
       return description
     }
     case 'interview_added': {
       const m = description.match(/round (\d+) \(([^)]+)\)/)
-      if (m) return `Entretien tour ${m[1]} (${m[2]}) ajouté`
+      if (m) return fill(t('timeline.interview_added'), { round: m[1], type: enumLabel('interview.type.', m[2]) })
       return description
     }
     case 'contact_added': {
       const m = description.match(/Contact (.+) added/)
-      if (m) return `Contact ${m[1]} ajouté`
+      if (m) return fill(t('timeline.contact_added'), { name: m[1] })
       return description
     }
     default: return description

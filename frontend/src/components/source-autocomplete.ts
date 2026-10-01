@@ -1,4 +1,5 @@
 import { JOB_BOARDS, faviconUrl, type JobBoard } from '../job-boards'
+import { esc } from '../sanitize'
 
 interface Suggestion {
   name: string
@@ -97,14 +98,17 @@ export function setupSourceAutocomplete(
       .map(x => x.s)
   }
 
+  const optionId = (index: number) => `${dropdown.id}-opt-${index}`
+
   function renderOption(s: Suggestion, index: number): string {
     const active = index === selectedIndex
     const cls = `source-option${active ? ' source-option-active' : ''}`
-    const attrs = `role="option" aria-selected="${active}" data-index="${index}"`
+    const attrs = `id="${optionId(index)}" role="option" aria-selected="${active}" data-index="${index}"`
 
-    const initial = s.name[0].toUpperCase()
+    // Array.from keeps an emoji or other astral character whole.
+    const initial = esc(Array.from(s.name)[0]?.toUpperCase() || '?')
     const favicon = s.domain
-      ? `<img src="${faviconUrl(s.domain)}" width="16" height="16" alt="" class="source-favicon" data-initial="${initial}" />`
+      ? `<img src="${esc(faviconUrl(s.domain))}" width="16" height="16" alt="" class="source-favicon" data-initial="${initial}" />`
       : `<span class="source-favicon-placeholder">${initial}</span>`
 
     return `<div class="${cls}" ${attrs}>${favicon}<span>${esc(s.name)}</span></div>`
@@ -117,6 +121,9 @@ export function setupSourceAutocomplete(
     }
 
     dropdown.innerHTML = results.map(renderOption).join('')
+    // Tells assistive tech which option the arrow keys highlight.
+    if (selectedIndex >= 0) input.setAttribute('aria-activedescendant', optionId(selectedIndex))
+    else input.removeAttribute('aria-activedescendant')
 
     dropdown.querySelectorAll<HTMLImageElement>('.source-favicon').forEach(img => {
       img.onerror = () => {
@@ -144,6 +151,7 @@ export function setupSourceAutocomplete(
     dropdown.classList.remove('dropdown-enter')
     dropdown.classList.add('dropdown-exit')
     input.setAttribute('aria-expanded', 'false')
+    input.removeAttribute('aria-activedescendant')
     visible = false
     selectedIndex = -1
     setTimeout(() => {
@@ -172,8 +180,15 @@ export function setupSourceAutocomplete(
 
   input.addEventListener('focus', async () => {
     await ensureLoaded()
+    // The first load can outlast a quick Tab away: do not pop the list open
+    // under a field that no longer has focus.
+    if (document.activeElement !== input) return
     render(filter(input.value))
   })
+
+  // Focus leaving by other means than Tab (mobile "Next" key, a click on
+  // another field). Clicks on an option keep focus: see pointerdown below.
+  input.addEventListener('blur', () => hide())
 
   input.addEventListener('keydown', (e) => {
     const results = filter(input.value)
@@ -225,8 +240,4 @@ export function setupSourceAutocomplete(
   document.addEventListener('click', (e) => {
     if (!wrapper.contains(e.target as Node)) hide()
   })
-}
-
-function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }

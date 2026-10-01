@@ -10,11 +10,57 @@ import { openModal } from '../components/modal'
 import { getDateLocale } from '../i18n'
 import { setupSourceAutocomplete } from '../components/source-autocomplete'
 
+/** Today's LOCAL calendar date in the `YYYY-MM-DDT00:00:00Z` form used for applied_at. */
+function localCalendarDate(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T00:00:00Z`
+}
+
+/** Salary label: the usual one for euros, the currency code otherwise. */
+function salaryLabel(currency: string): string {
+  return currency === 'EUR' ? t('form.salary') : t('form.salary_in').replace('{currency}', currency)
+}
+
+// Server messages the form can show in the user's language; anything else gets form.error.
+const SERVER_ERRORS = new Map<string, string>([
+  ['company_name is required', 'form.field_required'],
+  ['job_title is required', 'form.field_required'],
+  ['application not found', 'detail.not_found'],
+])
+
 export async function FormPage(id?: string): Promise<HTMLElement> {
   const isEdit = Boolean(id)
-  const existing = id ? await api.applications.get(id).catch(() => null) : null
+  let existing: Application | null = null
+  let loadError: 'not_found' | 'failed' | null = null
+  if (id) {
+    try {
+      existing = await api.applications.get(id)
+    } catch (err) {
+      loadError = err instanceof Error && err.message === 'application not found' ? 'not_found' : 'failed'
+    }
+  }
+
+  // Never show an empty edit form: saving it would replace every field of the record.
+  if (id && (loadError || !existing)) {
+    const err = document.createElement('div')
+    err.className = 'flex flex-col items-center justify-center h-64 text-muted gap-2'
+    err.innerHTML = `
+      <div class="text-muted/20">${icons.briefcaseLg}</div>
+      <p>${loadError === 'not_found' ? t('detail.not_found') : t('form.load_error')}</p>
+      <div class="flex items-center gap-2 mt-2">
+        ${loadError === 'not_found' ? '' : `<a href="/applications/${esc(id)}/edit" data-link class="btn-ghost text-sm">${t('form.retry')}</a>`}
+        <a href="/applications" data-link class="btn-ghost text-sm">${icons.arrowLeft} ${t('nav.applications')}</a>
+      </div>
+    `
+    return createLayout(err)
+  }
 
   const v = (field: keyof Application) => esc(String(existing?.[field] ?? ''))
+  const initialCurrency = existing?.salary_currency || 'EUR'
+  const appliedDate = (() => {
+    // applied_at is a calendar date stored as UTC midnight: read its UTC day.
+    const d = existing?.applied_at ? new Date(existing.applied_at) : null
+    return d && !isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : ''
+  })()
 
   const content = document.createElement('div')
   content.className = 'max-w-4xl mx-auto space-y-6 stagger'
@@ -29,8 +75,9 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       ${!isEdit ? `<div class="card">
         <div class="flex gap-2 items-end">
           <div class="flex-1">
-            <label for="f-extract-url" class="label">${t('form.extract_url')}</label>
-            <input id="f-extract-url" class="input" type="url" placeholder="${t('form.extract_url_placeholder')}" />
+            <label for="f-extract-url" class="label">${t('form.extract_url_label')}</label>
+            <!-- form="": kept out of #app-form, so a half-typed URL here never blocks saving -->
+            <input id="f-extract-url" class="input" type="url" form="" placeholder="${t('form.extract_url_placeholder')}" />
           </div>
           <button type="button" id="extract-btn" class="btn-primary whitespace-nowrap mb-px">${icons.globe} ${t('form.extract_btn')}</button>
         </div>
@@ -112,8 +159,9 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.salary_status')}</h2>
         <div class="grid grid-cols-1 xs:grid-cols-2 gap-4">
           <div>
-            <label for="f-salary" class="label">${t('form.salary')}</label>
-            <input id="f-salary" name="salary" class="input" type="number" step="1000" value="${v('salary')}" />
+            <label for="f-salary" id="salary-label" class="label">${esc(salaryLabel(initialCurrency))}</label>
+            <input id="f-salary" name="salary" class="input" type="number" min="0" step="1" value="${v('salary')}" />
+            <input type="hidden" name="salary_currency" id="salary-currency-input" value="${esc(initialCurrency)}" />
           </div>
           <div>
             <label for="f-status" class="label">${t('form.status')}</label>
@@ -127,9 +175,9 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         <div>
           <label class="label">${t('form.rating')}</label>
           <div class="flex items-center gap-3">
-            <div class="flex" id="star-picker" role="radiogroup" aria-label="${t('form.rating')}">
+            <div class="flex" id="star-picker" role="group" aria-label="${t('form.rating')}">
               ${[1,2,3,4,5].map(n => `
-                <button type="button" data-star="${n}" role="radio" aria-checked="${Number(v('rating')) === n}"
+                <button type="button" data-star="${n}" aria-pressed="${Number(v('rating')) === n}"
                   class="star-btn text-2xl leading-none transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded p-1.5
                     ${Number(v('rating')) >= n ? 'text-amber-400' : 'text-surface-3 hover:text-amber-300'}"
                   aria-label="${t('form.rating_' + n)}">&#9733;</button>
@@ -141,7 +189,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         </div>
         <div>
           <label class="label">${t('form.confidence')}</label>
-          <div class="flex gap-1.5" id="confidence-picker" role="radiogroup" aria-label="${t('form.confidence')}">
+          <div class="flex gap-1.5" id="confidence-picker" role="group" aria-label="${t('form.confidence')}">
             ${[1,2,3,4].map(n => {
               const active = Number(v('confidence')) === n
               const colors: Record<number, { active: string; idle: string }> = {
@@ -151,7 +199,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
                 4: { active: 'bg-teal-500 text-white dark:bg-teal-400 dark:text-teal-950', idle: 'text-teal-600 border-teal-300 dark:text-teal-400 dark:border-teal-700' },
               }
               const c = colors[n]
-              return `<button type="button" data-confidence="${n}" role="radio" aria-checked="${active}"
+              return `<button type="button" data-confidence="${n}" aria-pressed="${active}"
                 class="conf-btn rounded border px-3 py-1.5 text-xs font-semibold transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50
                   ${active ? c.active + ' border-transparent' : c.idle + ' hover:bg-surface-2'}"
                 aria-label="${t('form.confidence_' + n)}">${t('form.confidence_' + n)}</button>`
@@ -161,7 +209,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         </div>
         <div>
           <label for="f-applied-at" class="label">${t('form.applied_at')}</label>
-          <input id="f-applied-at" name="applied_at" class="input" type="date" value="${v('applied_at') ? new Date(v('applied_at')).toISOString().slice(0, 10) : ''}" />
+          <input id="f-applied-at" name="applied_at" class="input" type="date" value="${appliedDate}" />
         </div>
       </div>
 
@@ -232,6 +280,10 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
   if (extractBtn && extractInput) {
     // Track which fields were filled by extraction (not manually edited)
     const extractedFields = new Set<string>()
+    // Remember each field's initial value, so a select still on its default (e.g. work mode
+    // "On-site") counts as untouched and can take the extracted value.
+    content.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('#app-form [id^="f-"]')
+      .forEach(el => { el.dataset.initial = el.value })
 
     const setField = (id: string, value: string | undefined) => {
       const el = content.querySelector('#' + id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null
@@ -249,7 +301,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         return
       }
       // Skip if field has user-typed content (not from a previous extraction)
-      if (el.value && !extractedFields.has(id) && el.value !== 'CDI' && el.value !== 'Hybrid' && el.value !== 'Wishlist') return
+      if (el.value && !extractedFields.has(id) && el.value !== el.dataset.initial) return
       if (el.tagName === 'SELECT') {
         const option = el.querySelector(`option[value="${value}"]`) as HTMLOptionElement | null
         if (option) { el.value = value; extractedFields.add(id) }
@@ -257,6 +309,13 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         el.value = value
         extractedFields.add(id)
       }
+    }
+
+    const currencyInput = content.querySelector('#salary-currency-input') as HTMLInputElement
+    const salaryLabelEl = content.querySelector('#salary-label') as HTMLElement
+    const setCurrency = (currency: string) => {
+      currencyInput.value = currency
+      salaryLabelEl.textContent = salaryLabel(currency)
     }
 
     extractBtn.addEventListener('click', async () => {
@@ -283,6 +342,10 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         setField('f-contract-type', data.contract_type)
         setField('f-work-mode', data.work_mode)
         setField('f-salary', data.salary ? String(data.salary) : undefined)
+        // Keep the listing's currency with an extracted salary (only a plain ISO code:
+        // the value comes from page text), back to the initial one otherwise.
+        const extractedCurrency = data.salary_currency && /^[A-Z]{3}$/.test(data.salary_currency) ? data.salary_currency : 'EUR'
+        setCurrency(extractedFields.has('f-salary') ? extractedCurrency : initialCurrency)
 
         if (meaningful === 0) {
           toast(t('form.extract_partial'), 'info')
@@ -316,7 +379,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
           .replace(/text-amber-\w+|text-surface-\d+|hover:text-amber-\w+/g, '')
           .trim()
         btn.classList.add(active ? 'text-amber-400' : 'text-surface-3', 'hover:text-amber-300')
-        btn.setAttribute('aria-checked', String(value === n))
+        btn.setAttribute('aria-pressed', String(value === n))
       })
       if (ratingHint) {
         ratingHint.textContent = value > 0 ? t('form.rating_' + value) : ''
@@ -358,7 +421,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
           const isActive = bn === value
           const c = confColors[bn]
           b.className = `conf-btn rounded border px-3 py-1.5 text-xs font-semibold transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${isActive ? c.active : c.idle + ' hover:bg-surface-2'}`
-          b.setAttribute('aria-checked', String(isActive))
+          b.setAttribute('aria-pressed', String(isActive))
         })
       })
     })
@@ -368,12 +431,21 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
     e.preventDefault()
     const form = e.target as HTMLFormElement
     const submitBtn = form.querySelector<HTMLButtonElement>('[type="submit"]')
+    const data = Object.fromEntries(new FormData(form)) as Record<string, string>
+
+    // `required` lets a blank-looking value of spaces through: catch it here, in the user's
+    // language, instead of showing the server's English message.
+    const blankField = !data.company_name?.trim() ? '#f-company-name' : !data.job_title?.trim() ? '#f-job-title' : ''
+    if (blankField) {
+      toast(t('form.field_required'), 'error')
+      form.querySelector<HTMLInputElement>(blankField)?.focus()
+      return
+    }
+
     if (submitBtn) {
       submitBtn.disabled = true
       submitBtn.innerHTML = `<span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> ${isEdit ? t('form.save') : t('form.create')}`
     }
-
-    const data = Object.fromEntries(new FormData(form)) as Record<string, string>
 
     const payload: Partial<Application> = {
       company_name: data.company_name,
@@ -389,7 +461,8 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       work_mode: data.work_mode as Application['work_mode'],
       location: data.location || undefined,
       salary: data.salary ? Number(data.salary) : undefined,
-      salary_currency: 'EUR',
+      // Never omit it: the update is a full replace and the column has no default there.
+      salary_currency: data.salary_currency || initialCurrency,
       status: data.status as Application['status'],
       applied_at: data.applied_at ? data.applied_at + 'T00:00:00Z' : undefined,
       source: data.source || undefined,
@@ -397,6 +470,12 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       speech: data.speech || undefined,
       rating: data.rating ? Number(data.rating) : undefined,
       confidence: data.confidence ? Number(data.confidence) : undefined,
+    }
+    // Creating an application as Applied, or moving one to Applied, without a date: send the
+    // user's local day, as the detail page does, rather than letting the server stamp the
+    // current UTC instant (shown as a UTC calendar date, it can land on the next day).
+    if (payload.status === 'Applied' && !payload.applied_at && (!isEdit || existing?.status !== 'Applied')) {
+      payload.applied_at = localCalendarDate()
     }
 
     // Duplicate check (new applications only)
@@ -414,7 +493,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
                   const dateStr = new Date(d.created_at.replace(' ', 'T')).toLocaleDateString(getDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' })
                   return `<div class="p-3 rounded border border-border bg-surface-2/30">
                     <div class="text-sm font-medium text-primary">${esc(d.job_title)}</div>
-                    <div class="text-xs text-muted mt-0.5">${statusLabel(d.status as ApplicationStatus)} · ${dateStr}</div>
+                    <div class="text-xs text-muted mt-0.5">${esc(statusLabel(d.status as ApplicationStatus))} · ${dateStr}</div>
                   </div>`
                 }).join('')}
               </div>
@@ -444,7 +523,8 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       formSubmitted = true
       navigate('/applications/' + result.id)
     } catch (err) {
-      toast(err instanceof Error ? err.message : t('form.error'), 'error')
+      const key = err instanceof Error ? SERVER_ERRORS.get(err.message) : undefined
+      toast(t(key ?? 'form.error'), 'error')
       if (submitBtn) {
         submitBtn.disabled = false
         submitBtn.textContent = isEdit ? t('form.save') : t('form.create')

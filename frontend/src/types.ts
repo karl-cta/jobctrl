@@ -32,6 +32,9 @@ export interface Application {
   salary?: number
   salary_currency: string
   status: ApplicationStatus
+  /** A calendar date, not an instant: stored as `YYYY-MM-DDT00:00:00Z`.
+   *  Display it with `timeZone: 'UTC'` so it never shifts by a day, and build
+   *  it from the LOCAL date (getFullYear/getMonth/getDate) + `T00:00:00Z`. */
   applied_at?: string
   source?: string
   notes?: string
@@ -50,6 +53,9 @@ export interface Interview {
   application_id: string
   round: number
   type: InterviewType
+  /** Floating wall-clock time: the local time the user typed, stored with a
+   *  `Z` suffix although it is not UTC. Never convert it: display it with
+   *  `timeZone: 'UTC'` so it reads back exactly as typed. */
   scheduled_at?: string
   duration_minutes?: number
   interviewer_name?: string
@@ -124,8 +130,9 @@ export interface PeriodStats {
   funnel: FunnelStats
 }
 
-/** One interview as seen from the dashboard. `at` is a UTC datetime string
- *  (`2006-01-02 15:04:05`). */
+/** One interview as seen from the dashboard. `at` comes from the interview's
+ *  scheduled_at (`2006-01-02 15:04:05`): floating wall-clock time, not UTC, so
+ *  it is displayed with `timeZone: 'UTC'` (see Interview.scheduled_at). */
 export interface InterviewStep {
   round: number
   type: string
@@ -155,12 +162,17 @@ export interface WeeklyPoint {
 
 export type DashboardPeriod = '30' | '90' | '365' | 'all'
 
+/** One heatmap cell: `date` is a LOCAL day (`YYYY-MM-DD`) in the time zone
+ *  the client sent as `tz` (see api.stats). */
 export interface ActivityDay {
   date: string
   count: number
 }
 
 export interface ActivityItem {
+  /** A real UTC instant, displayed in the browser's local time. Exception:
+   *  for `interview_held` it is the interview's floating scheduled_at, shown
+   *  with `timeZone: 'UTC'`. */
   time: string
   event_type: string
   description: string

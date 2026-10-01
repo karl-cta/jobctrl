@@ -37,13 +37,19 @@ export function openModal(opts: { title: string; content: HTMLElement; onClose?:
       return
     }
     if (e.key === 'Tab') {
-      const focusable = modal.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      )
-      if (!focusable.length) return
+      const focusable = Array.from(modal.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )).filter(el => el.getClientRects().length > 0)
+      if (!focusable.length) { e.preventDefault(); return }
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
-      if (e.shiftKey && document.activeElement === first) {
+      // Focus can sit outside the panel (e.g. on <body> after a click on a
+      // non-focusable area): bring it back instead of tabbing into the page.
+      if (!modal.contains(document.activeElement)) {
+        e.preventDefault()
+        const target = e.shiftKey ? last : first
+        target.focus()
+      } else if (e.shiftKey && document.activeElement === first) {
         e.preventDefault()
         last.focus()
       } else if (!e.shiftKey && document.activeElement === last) {
@@ -58,6 +64,7 @@ export function openModal(opts: { title: string; content: HTMLElement; onClose?:
     if (closed) return
     closed = true
     document.removeEventListener('keydown', onKeydown)
+    window.removeEventListener('popstate', close)
     overlay.classList.add('closing')
     overlay.addEventListener('animationend', () => {
       overlay.remove()
@@ -73,6 +80,8 @@ export function openModal(opts: { title: string; content: HTMLElement; onClose?:
   const closeBtn = header.querySelector('[data-modal-close]') as HTMLElement
   closeBtn?.addEventListener('click', close)
   document.addEventListener('keydown', onKeydown)
+  // Browser Back/Forward renders another page: the dialog goes with it.
+  window.addEventListener('popstate', close, { once: true })
 
   document.body.style.overflow = 'hidden'
   document.body.appendChild(overlay)

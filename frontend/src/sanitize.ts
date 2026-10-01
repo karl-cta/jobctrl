@@ -19,10 +19,12 @@ export function sanitizeUrl(url: string | null | undefined): string {
   }
 }
 
+/** Bare hostname of `url`, or '' when it does not parse. Plain text, never
+ *  HTML: callers must esc() it before putting it in markup. */
 export function safeHostname(url: string): string {
   try {
     return new URL(url).hostname
   } catch {
-    return esc(url)
+    return ''
   }
 }

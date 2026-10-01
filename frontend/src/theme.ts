@@ -1,5 +1,15 @@
+// localStorage can throw (site data blocked, some private modes): the theme
+// then simply is not remembered.
+function readSavedTheme(): string | null {
+  try {
+    return localStorage.getItem('jc-theme')
+  } catch {
+    return null
+  }
+}
+
 export function initTheme() {
-  const saved = localStorage.getItem('jc-theme')
+  const saved = readSavedTheme()
   if (saved === 'light') {
     document.documentElement.classList.remove('dark')
   } else if (saved === 'dark') {
@@ -15,7 +25,9 @@ export function initTheme() {
 
 export function toggleTheme() {
   const isDarkNow = document.documentElement.classList.toggle('dark')
-  localStorage.setItem('jc-theme', isDarkNow ? 'dark' : 'light')
+  try {
+    localStorage.setItem('jc-theme', isDarkNow ? 'dark' : 'light')
+  } catch { /* storage blocked: the choice lasts for this page only */ }
 }
 
 export function isDark(): boolean {

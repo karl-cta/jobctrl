@@ -14,6 +14,12 @@ const typeIcons: Record<ToastType, string> = {
 
 let container: HTMLElement | null = null
 
+/** Creates the live region up front: screen readers announce reliably only
+ *  what is added to a region that already exists. */
+export function initToasts() {
+  getContainer()
+}
+
 function getContainer(): HTMLElement {
   if (container && document.body.contains(container)) return container
   container = document.createElement('div')
@@ -50,7 +56,14 @@ export function celebrate(anchor?: HTMLElement) {
   }
 }
 
-export function toast(message: string, type: ToastType = 'info', durationMs = 4000) {
+/** How long a toast stays: longer for errors, and for long messages so they
+ *  can be read to the end. */
+function defaultDuration(message: string, type: ToastType): number {
+  const base = type === 'error' ? 8000 : 4000
+  return Math.min(Math.max(base, 2000 + message.length * 60), 15000)
+}
+
+export function toast(message: string, type: ToastType = 'info', durationMs?: number) {
   const el = document.createElement('div')
   el.className = `border rounded px-4 py-3 text-sm font-medium flex items-center gap-2.5 ${typeStyles[type]}`
   el.style.boxShadow = 'var(--shadow-elevated)'
@@ -75,9 +88,27 @@ export function toast(message: string, type: ToastType = 'info', durationMs = 40
     el.style.transform = 'translateY(0)'
   })
 
-  setTimeout(() => {
+  let dismissed = false
+  const dismiss = () => {
+    if (dismissed) return
+    dismissed = true
     el.style.opacity = '0'
     el.style.transform = 'translateY(8px)'
     setTimeout(() => el.remove(), 200)
-  }, durationMs)
+  }
+
+  // The countdown pauses while the pointer is over the toast.
+  let remaining = durationMs ?? defaultDuration(message, type)
+  let startedAt = Date.now()
+  let timer = setTimeout(dismiss, remaining)
+  el.addEventListener('mouseenter', () => {
+    clearTimeout(timer)
+    remaining -= Date.now() - startedAt
+  })
+  el.addEventListener('mouseleave', () => {
+    if (dismissed) return
+    startedAt = Date.now()
+    remaining = Math.max(remaining, 1500)
+    timer = setTimeout(dismiss, remaining)
+  })
 }

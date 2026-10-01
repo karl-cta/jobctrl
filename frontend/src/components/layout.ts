@@ -1,7 +1,7 @@
 import { icons } from '../icons'
 import { t, getLocale, setLocale } from '../i18n'
 import { toggleTheme, isDark } from '../theme'
-import { navigate } from '../router'
+import { rerender } from '../router'
 
 function navLink(href: string, label: string): string {
   const active = location.pathname === href || (href !== '/' && location.pathname.startsWith(href))
@@ -35,7 +35,7 @@ export function createLayout(content: HTMLElement): HTMLElement {
           </nav>
         </div>
         <div class="flex items-center gap-1.5">
-          <a href="/applications/new" data-link class="btn-primary gap-1.5">${icons.plus} <span class="hidden xs:inline">${t('nav.new')}</span></a>
+          <a href="/applications/new" data-link class="btn-primary gap-1.5" aria-label="${t('nav.new_application')}">${icons.plus} <span class="hidden xs:inline">${t('nav.new')}</span></a>
           <button id="locale-btn" class="btn-ghost p-2 min-w-[44px] min-h-[44px] text-xs font-medium" aria-label="${locale === 'fr' ? 'Switch to English' : 'Passer en français'}">
             ${locale.toUpperCase()}
           </button>
@@ -104,13 +104,20 @@ export function createLayout(content: HTMLElement): HTMLElement {
     a.addEventListener('click', () => closeMobileNav())
   })
 
-  // Theme toggle
-  const handleTheme = () => { toggleTheme(); navigate(location.pathname) }
-  wrapper.querySelector('#theme-btn')?.addEventListener('click', handleTheme)
+  // Theme toggle: the colours follow the .dark class, so only the icon needs
+  // updating. No re-render, so filters and unsaved form input stay put.
+  const themeBtn = wrapper.querySelector('#theme-btn') as HTMLElement
+  themeBtn.addEventListener('click', () => {
+    toggleTheme()
+    themeBtn.innerHTML = isDark() ? icons.sun : icons.moon
+  })
 
-  // Locale toggle
-  const handleLocale = () => { setLocale(locale === 'fr' ? 'en' : 'fr'); navigate(location.pathname) }
-  wrapper.querySelector('#locale-btn')?.addEventListener('click', handleLocale)
+  // Locale toggle: every label is built from t(), so the page is re-rendered
+  // in place (same URL and query string, no new history entry). The unsaved
+  // changes guard is asked before the locale changes.
+  wrapper.querySelector('#locale-btn')?.addEventListener('click', () => {
+    rerender(() => setLocale(getLocale() === 'fr' ? 'en' : 'fr'))
+  })
 
   return wrapper
 }

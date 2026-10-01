@@ -298,17 +298,25 @@ for (const jb of JOB_BOARDS) {
   if (jb.domain) _domainIndex.set(jb.name.toLowerCase(), jb.domain)
 }
 
+/** Favicon service URL for `domain`. The result is a URL, not markup: esc()
+ *  it before putting it in an attribute. */
 export function faviconUrl(domain: string, size = 32): string {
-  return `https://www.google.com/s2/favicons?domain=${domain}&sz=${size}`
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`
 }
 
 export function getSourceDomain(sourceName: string): string | undefined {
   return _domainIndex.get(sourceName.toLowerCase())
 }
 
+/** Hostname of an http(s) URL without its `www.` prefix, or null. Only DNS
+ *  characters are accepted (URL.hostname is already punycode for IDNs): a
+ *  crafted company_website can then never break out of an attribute. */
 export function domainFromUrl(url: string): string | null {
   try {
-    return new URL(url).hostname.replace(/^www\./, '')
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    const host = parsed.hostname.replace(/^www\./, '')
+    return /^[a-z0-9.-]+$/i.test(host) ? host : null
   } catch {
     return null
   }

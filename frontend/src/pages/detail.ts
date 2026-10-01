@@ -1,7 +1,7 @@
 import { api } from '../api'
 import { createLayout } from '../components/layout'
 import { openModal } from '../components/modal'
-import { navigate } from '../router'
+import { navigate, setNavigationGuard, setNavigationCleanup } from '../router'
 import { toast, celebrate } from '../components/toast'
 import { t, getDateLocale, translateTimelineEvent } from '../i18n'
 import { icons } from '../icons'
@@ -15,6 +15,7 @@ import {
   interviewOutcomeLabel,
   contractLabel,
   workModeLabel,
+  type Application,
   type ApplicationStatus,
   type Interview,
   type Contact,
@@ -26,6 +27,39 @@ const OUTCOME_COLORS: Record<string, string> = {
   Pending: 'bg-stone-100 text-stone-600 dark:bg-stone-800/60 dark:text-stone-300',
   Cancelled: 'bg-stone-100 text-stone-500 dark:bg-stone-800/40 dark:text-stone-400',
   Rejected: 'bg-rose-50 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300',
+}
+
+// Literal class names: Tailwind only generates classes it can find verbatim in the source.
+const LG_COLS: Record<number, string> = {
+  1: 'lg:grid-cols-1',
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+  5: 'lg:grid-cols-5',
+  6: 'lg:grid-cols-6',
+  7: 'lg:grid-cols-7',
+}
+
+/** Today's LOCAL calendar date in the `YYYY-MM-DDT00:00:00Z` form used for applied_at. */
+function localCalendarDate(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T00:00:00Z`
+}
+
+/** A mailto: URL, or '' when the value does not look like a single address (the caller then
+ *  shows it as plain text). Both halves are percent-encoded so `?`, `&` or `#` cannot add
+ *  headers (cc, bcc, body) to the draft. */
+function mailtoHref(email: string): string {
+  const parts = email.split('@')
+  if (parts.length !== 2 || !parts[0] || !parts[1] || /\s/.test(email)) return ''
+  return `mailto:${encodeURIComponent(parts[0])}@${encodeURIComponent(parts[1])}`
+}
+
+/** Salary as shown on the detail page: 45000 -> "45k €", 550 -> "550 €", 60000 GBP -> "60k GBP". */
+function formatSalary(amount: number, currency: string | undefined, locale: string): string {
+  const n = amount >= 1000
+    ? `${(amount / 1000).toLocaleString(locale, { maximumFractionDigits: 1 })}k`
+    : amount.toLocaleString(locale)
+  return `${n} ${!currency || currency === 'EUR' ? '\u20ac' : currency}`
 }
 
 function buildInterviewForm(iv?: Partial<Interview>): {
@@ -49,12 +83,12 @@ function buildInterviewForm(iv?: Partial<Interview>): {
         </select>
       </div>
     </div>
-    <div>
-      <label class="label">${t('detail.interview_scheduled')}</label>
+    <div role="group" aria-labelledby="iv-scheduled-label">
+      <span id="iv-scheduled-label" class="label">${t('detail.interview_scheduled')}</span>
       <div class="grid grid-cols-2 gap-3">
-        <input id="iv-scheduled-date" name="scheduled_date" class="input" type="date" aria-label="${t('detail.interview_scheduled')} (date)"
+        <input id="iv-scheduled-date" name="scheduled_date" class="input" type="date" aria-label="${t('detail.interview_date')}"
           value="${iv?.scheduled_at ? new Date(iv.scheduled_at).toISOString().slice(0, 10) : ''}" />
-        <input id="iv-scheduled-time" name="scheduled_time" class="input" type="time" aria-label="${t('detail.interview_scheduled')} (time)"
+        <input id="iv-scheduled-time" name="scheduled_time" class="input" type="time" aria-label="${t('detail.interview_time')}"
           value="${iv?.scheduled_at ? new Date(iv.scheduled_at).toISOString().slice(11, 16) : ''}" />
       </div>
     </div>
@@ -108,6 +142,8 @@ function buildInterviewForm(iv?: Partial<Interview>): {
     interviewer_name: (el.querySelector<HTMLInputElement>('[name="interviewer_name"]'))?.value || undefined,
     interviewer_role: (el.querySelector<HTMLInputElement>('[name="interviewer_role"]'))?.value || undefined,
     notes: (el.querySelector<HTMLTextAreaElement>('[name="notes"]'))?.value || undefined,
+    // Not editable here, but the PUT is a full replace: carry it through so an edit keeps it.
+    prep_notes: iv?.prep_notes,
   })
   return { el, getData }
 }
@@ -166,7 +202,10 @@ function buildContactForm(c?: Partial<Contact>): {
   return { el, getData }
 }
 
-function makeTabs(tabs: Array<{ id: string; label: string; panel: HTMLElement }>): HTMLElement {
+function makeTabs(tabs: Array<{ id: string; label: string; panel: HTMLElement }>): {
+  el: HTMLElement
+  setLabel: (id: string, label: string) => void
+} {
   const wrapper = document.createElement('div')
   wrapper.className = 'space-y-0'
 
@@ -255,9 +294,19 @@ function makeTabs(tabs: Array<{ id: string; label: string; panel: HTMLElement }>
     tabBtns[next].focus()
   })
 
+  // Relabel a tab (e.g. a changed count) and keep the indicator on the active tab,
+  // whose position or width may have moved with the new text.
+  function setLabel(id: string, label: string) {
+    const btn = bar.querySelector<HTMLElement>(`[data-tab="${id}"]`)
+    if (!btn) return
+    btn.textContent = label
+    const active = bar.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (active) moveIndicator(active)
+  }
+
   wrapper.appendChild(bar)
   panels.forEach(p => wrapper.appendChild(p))
-  return wrapper
+  return { el: wrapper, setLabel }
 }
 
 export async function DetailPage(id: string): Promise<HTMLElement> {
@@ -275,6 +324,14 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   }
 
   const dateFmt = getDateLocale()
+
+  // After each PUT, copy back the fields the server may set itself (applied_at on the move
+  // to Applied), so a later save from this page never sends a stale applied_at.
+  const syncApp = (updated: Application) => {
+    app.applied_at = updated.applied_at ?? undefined
+    app.status = updated.status
+    app.updated_at = updated.updated_at
+  }
 
   const content = document.createElement('div')
   content.className = 'space-y-10 stagger'
@@ -343,11 +400,17 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       item.addEventListener('click', async () => {
         closeDropdown()
         try {
-          await api.applications.update(id, { ...app!, status: s })
-          app!.status = s
+          const payload: Partial<Application> = { ...app!, status: s }
+          // applied_at is a calendar date: on the move to Applied, send the user's local
+          // day instead of letting the server stamp the current UTC instant.
+          if (s === 'Applied' && app!.status !== 'Applied' && !app!.applied_at) payload.applied_at = localCalendarDate()
+          const updated = await api.applications.update(id, payload)
+          syncApp(updated)
           statusBtn.className = `badge ${STATUS_COLORS[s]} cursor-pointer hover:opacity-80 transition-opacity duration-100`
           statusBtn.textContent = statusLabel(s)
           renderStatusItems()
+          renderDetails()
+          void refreshTimeline()
           const celebrateMsg: Record<string, string> = { Offer: t('list.celebrate_offer'), Accepted: t('list.celebrate_accepted') }
           toast(celebrateMsg[s] || statusLabel(s), 'success')
           if (s === 'Offer' || s === 'Accepted') celebrate(statusBtn)
@@ -415,7 +478,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   topBar.innerHTML = `
     <a href="/applications" data-link class="text-muted hover:text-primary transition-colors text-sm flex items-center gap-1.5" aria-label="${t('form.back')}">${icons.arrowLeft} ${t('nav.applications')}</a>
     <div class="flex items-center gap-1 shrink-0">
-      <a href="/applications/${app.id}/edit" data-link class="text-muted hover:text-primary transition-colors text-sm px-2.5 py-1.5 inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden="true">${icons.edit}</span>${t('detail.edit')}</a>
+      <a href="/applications/${esc(encodeURIComponent(app.id))}/edit" data-link class="text-muted hover:text-primary transition-colors text-sm px-2.5 py-1.5 inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden="true">${icons.edit}</span>${t('detail.edit')}</a>
       <button id="delete-btn" class="text-muted hover:text-red-500 dark:hover:text-red-400 transition-colors text-sm px-2.5 py-1.5 inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden="true">${icons.trash}</span>${t('detail.delete')}</button>
     </div>
   `
@@ -426,7 +489,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   titleGroup.innerHTML = `
     <h1 class="text-3xl font-bold text-primary tracking-tighter">${
       app.company_website && domainFromUrl(app.company_website)
-        ? `<img src="${faviconUrl(domainFromUrl(app.company_website)!, 64)}" alt="" class="inline-block w-7 h-7 rounded -mt-1 mr-2" onerror="this.style.display='none'" />`
+        ? `<img src="${esc(faviconUrl(domainFromUrl(app.company_website)!, 64))}" alt="" class="inline-block w-7 h-7 rounded -mt-1 mr-2" loading="lazy" data-hide-on-error />`
         : ''
     }${esc(app.company_name)}</h1>
     <p class="text-lg text-muted mt-1">${esc(app.job_title)}</p>
@@ -470,19 +533,33 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       if (level > 0) {
         confBtn.className = `text-sm font-medium cursor-pointer hover:opacity-80 transition-opacity ${confidenceColors[level] || 'text-muted'}`
         confBtn.textContent = t('form.confidence_' + level)
+        confBtn.setAttribute('aria-label', t('detail.confidence_label').replace('{level}', t('form.confidence_' + level)))
       } else {
         confBtn.className = 'text-sm text-muted/40 cursor-pointer hover:text-muted transition-colors'
         confBtn.textContent = '---'
+        confBtn.setAttribute('aria-label', t('detail.confidence_unset'))
       }
     }
     updateConfBtn(currentConf)
     confBtn.setAttribute('aria-haspopup', 'true')
+    confBtn.setAttribute('aria-expanded', 'false')
     confWrapper.appendChild(confBtn)
 
     const confDrop = document.createElement('div')
     confDrop.className = 'hidden absolute top-full left-0 mt-2 z-40 bg-surface-1 border border-border rounded py-1 min-w-[160px]'
     confDrop.style.boxShadow = 'var(--shadow-elevated)'
     confDrop.setAttribute('role', 'menu')
+
+    const openConf = () => {
+      confDrop.classList.remove('hidden')
+      confBtn.setAttribute('aria-expanded', 'true')
+      const current = confDrop.querySelector<HTMLElement>('[aria-checked="true"]') || confDrop.querySelector<HTMLElement>('[role="menuitemradio"]')
+      current?.focus()
+    }
+    const closeConf = () => {
+      confDrop.classList.add('hidden')
+      confBtn.setAttribute('aria-expanded', 'false')
+    }
 
     const confLevels = [1, 2, 3, 4] as const
     function renderConfItems() {
@@ -491,13 +568,16 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         const isCurrent = n === app!.confidence
         const item = document.createElement('button')
         item.className = `w-full text-left px-3 py-2 text-sm hover:bg-surface-2 focus:bg-surface-2 focus:outline-none transition-colors ${isCurrent ? 'font-semibold ' + (confidenceColors[n] || '') : 'text-primary'}`
-        item.setAttribute('role', 'menuitem')
+        item.setAttribute('role', 'menuitemradio')
+        item.setAttribute('aria-checked', String(isCurrent))
         item.textContent = t('form.confidence_' + n)
         item.addEventListener('click', async () => {
-          confDrop.classList.add('hidden')
+          closeConf()
+          confBtn.focus()
           try {
             const newConf = isCurrent ? 0 : n
-            await api.applications.update(id, { ...app!, confidence: newConf || undefined })
+            const updated = await api.applications.update(id, { ...app!, confidence: newConf || undefined })
+            syncApp(updated)
             app!.confidence = newConf || undefined
             updateConfBtn(newConf)
             renderConfItems()
@@ -512,41 +592,77 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
     confBtn.addEventListener('click', (e) => {
       e.stopPropagation()
-      confDrop.classList.toggle('hidden')
+      if (confDrop.classList.contains('hidden')) openConf()
+      else closeConf()
     })
-    document.addEventListener('click', () => confDrop.classList.add('hidden'), { capture: true })
+    confDrop.addEventListener('keydown', (e) => {
+      const items = Array.from(confDrop.querySelectorAll<HTMLElement>('[role="menuitemradio"]'))
+      const current = items.indexOf(document.activeElement as HTMLElement)
+      let next = -1
+      switch (e.key) {
+        case 'ArrowDown': next = current < items.length - 1 ? current + 1 : 0; break
+        case 'ArrowUp': next = current > 0 ? current - 1 : items.length - 1; break
+        case 'Home': next = 0; break
+        case 'End': next = items.length - 1; break
+        case 'Escape':
+          closeConf()
+          confBtn.focus()
+          e.stopPropagation()
+          return
+        default: return
+      }
+      e.preventDefault()
+      items[next]?.focus()
+    })
+    // Tabbing out closes the menu. A null relatedTarget (a click on something that does not
+    // take focus, as Safari does for buttons) is left to the document click listener below,
+    // otherwise the menu would hide before the item's own click lands.
+    confWrapper.addEventListener('focusout', (e) => {
+      const next = e.relatedTarget as Node | null
+      if (next && !confWrapper.contains(next)) closeConf()
+    })
+    // Capture phase runs before confBtn's own handler, so ignore clicks inside the picker
+    // or the button could never close the menu it opened.
+    document.addEventListener('click', (e) => {
+      if (!confWrapper.contains(e.target as Node)) closeConf()
+    }, { capture: true })
     confWrapper.appendChild(confDrop)
     metaRow.appendChild(confWrapper)
   }
   header.appendChild(metaRow)
   content.appendChild(header)
 
-  // — Metadata: clean typographic row, no boxes
-  const details: Array<{ label: string; value: string; href?: string; iconHtml?: string }> = []
-  if (app.contract_type) {
-    let contractValue = contractLabel(app.contract_type as string)
-    if (app.contract_type === 'CDD' && app.contract_duration) {
-      contractValue += ` (${app.contract_duration} ${t('detail.months')})`
+  // Metadata: clean typographic row, no boxes. Rebuilt after a status change, which can
+  // set applied_at.
+  const detailsRow = document.createElement('div')
+  const renderDetails = () => {
+    const details: Array<{ label: string; value: string; href?: string; iconHtml?: string }> = []
+    if (app.contract_type) {
+      let contractValue = contractLabel(app.contract_type as string)
+      if (app.contract_type === 'CDD' && app.contract_duration) {
+        contractValue += ` (${app.contract_duration} ${t('detail.months')})`
+      }
+      details.push({ label: t('detail.contract'), value: contractValue })
     }
-    details.push({ label: t('detail.contract'), value: contractValue })
-  }
-  if (app.work_mode) details.push({ label: t('detail.mode'), value: workModeLabel(app.work_mode) })
-  if (app.salary) details.push({ label: t('detail.salary'), value: `${app.salary / 1000}k \u20ac` })
-  if (app.applied_at) details.push({ label: t('detail.applied_at'), value: new Date(app.applied_at).toLocaleDateString(dateFmt) })
-  details.push({ label: t('detail.created_at'), value: new Date(app.created_at).toLocaleDateString(dateFmt) })
-  if (app.source) {
-    const srcDomain = getSourceDomain(app.source)
-    const srcIcon = srcDomain
-      ? `<img src="${faviconUrl(srcDomain)}" width="16" height="16" alt="" class="source-favicon" onerror="this.style.display='none'" />`
-      : ''
-    details.push({ label: t('detail.source'), value: app.source, iconHtml: srcIcon })
-  }
-  if (app.job_url && sanitizeUrl(app.job_url)) details.push({ label: t('detail.job_link'), value: safeHostname(app.job_url), href: sanitizeUrl(app.job_url) })
+    if (app.work_mode) details.push({ label: t('detail.mode'), value: workModeLabel(app.work_mode) })
+    if (app.salary) details.push({ label: t('detail.salary'), value: formatSalary(app.salary, app.salary_currency, dateFmt) })
+    // applied_at is a calendar date stored as UTC midnight: format it in UTC so it shows the
+    // same day everywhere. created_at is a real instant and stays in local time.
+    if (app.applied_at) details.push({ label: t('detail.applied_at'), value: new Date(app.applied_at).toLocaleDateString(dateFmt, { timeZone: 'UTC' }) })
+    details.push({ label: t('detail.created_at'), value: new Date(app.created_at).toLocaleDateString(dateFmt) })
+    if (app.source) {
+      const srcDomain = getSourceDomain(app.source)
+      const srcIcon = srcDomain
+        ? `<img src="${esc(faviconUrl(srcDomain))}" width="16" height="16" alt="" class="source-favicon" loading="lazy" data-hide-on-error />`
+        : ''
+      details.push({ label: t('detail.source'), value: app.source, iconHtml: srcIcon })
+    }
+    // safeHostname returns plain text: it is escaped below along with every other value.
+    if (app.job_url && sanitizeUrl(app.job_url)) details.push({ label: t('detail.job_link'), value: safeHostname(app.job_url), href: sanitizeUrl(app.job_url) })
 
-  if (details.length) {
-    const detailsRow = document.createElement('div')
     const colCount = Math.min(details.length, 7)
-    detailsRow.className = `grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-${colCount} gap-y-5 gap-x-5 py-6 border-t border-b border-border/50`
+    detailsRow.className = `grid grid-cols-2 sm:grid-cols-3 ${LG_COLS[colCount] ?? ''} gap-y-5 gap-x-5 py-6 border-t border-b border-border/50`
+    detailsRow.innerHTML = ''
     details.forEach(d => {
       const item = document.createElement('div')
       item.className = 'min-w-0'
@@ -558,8 +674,9 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
            <span class="flex items-center gap-2 text-sm text-primary font-medium truncate">${icon}<span class="truncate">${esc(d.value)}</span></span>`
       detailsRow.appendChild(item)
     })
-    content.appendChild(detailsRow)
   }
+  renderDetails()
+  content.appendChild(detailsRow)
 
   const layout = document.createElement('div')
   layout.className = 'flex flex-col lg:flex-row gap-6'
@@ -567,27 +684,28 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   // Notes tab
   const notesPanel = document.createElement('div')
   notesPanel.className = 'p-6 space-y-4'
-  {
-    const notesTA = document.createElement('textarea')
-    notesTA.className = 'input min-h-[150px] w-full'
-    notesTA.value = app.notes ?? ''
-    notesTA.placeholder = t('detail.no_notes')
-    notesTA.setAttribute('aria-label', t('detail.tab_notes'))
-    const notesSaveBtn = document.createElement('button')
-    notesSaveBtn.className = 'btn-primary text-sm'
-    notesSaveBtn.textContent = t('detail.save')
-    notesSaveBtn.addEventListener('click', async () => {
-      try {
-        await api.applications.update(id, { ...app, notes: notesTA.value || undefined })
-        app.notes = notesTA.value || undefined
-        toast(t('detail.save'), 'success')
-      } catch {
-        toast(t('form.error'), 'error')
-      }
-    })
-    notesPanel.appendChild(notesTA)
-    notesPanel.appendChild(notesSaveBtn)
-  }
+  const notesTA = document.createElement('textarea')
+  notesTA.className = 'input min-h-[150px] w-full'
+  notesTA.value = app.notes ?? ''
+  notesTA.placeholder = t('detail.no_notes')
+  notesTA.setAttribute('aria-label', t('detail.tab_notes'))
+  const notesSaveBtn = document.createElement('button')
+  notesSaveBtn.className = 'btn-primary text-sm'
+  notesSaveBtn.textContent = t('detail.save')
+  notesSaveBtn.addEventListener('click', async () => {
+    const value = notesTA.value
+    try {
+      const updated = await api.applications.update(id, { ...app, notes: value || undefined })
+      syncApp(updated)
+      app.notes = value || undefined
+      notesTA.dataset.saved = value
+      toast(t('detail.saved'), 'success')
+    } catch {
+      toast(t('form.error'), 'error')
+    }
+  })
+  notesPanel.appendChild(notesTA)
+  notesPanel.appendChild(notesSaveBtn)
 
   // Prep tab
   const prepPanel = document.createElement('div')
@@ -601,10 +719,13 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   prepSaveBtn.className = 'btn-primary text-sm'
   prepSaveBtn.textContent = t('detail.save')
   prepSaveBtn.addEventListener('click', async () => {
+    const value = prepTA.value
     try {
-      await api.applications.update(id, { ...app, speech: prepTA.value || undefined })
-      app.speech = prepTA.value || undefined
-      toast(t('detail.save'), 'success')
+      const updated = await api.applications.update(id, { ...app, speech: value || undefined })
+      syncApp(updated)
+      app.speech = value || undefined
+      prepTA.dataset.saved = value
+      toast(t('detail.saved'), 'success')
     } catch {
       toast(t('form.error'), 'error')
     }
@@ -624,16 +745,37 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   offerSaveBtn.className = 'btn-primary text-sm'
   offerSaveBtn.textContent = t('detail.save')
   offerSaveBtn.addEventListener('click', async () => {
+    const value = offerTA.value
     try {
-      await api.applications.update(id, { ...app, job_description: offerTA.value || undefined })
-      app.job_description = offerTA.value || undefined
-      toast(t('detail.save'), 'success')
+      const updated = await api.applications.update(id, { ...app, job_description: value || undefined })
+      syncApp(updated)
+      app.job_description = value || undefined
+      offerTA.dataset.saved = value
+      toast(t('detail.saved'), 'success')
     } catch {
       toast(t('form.error'), 'error')
     }
   })
   offerPanel.appendChild(offerTA)
   offerPanel.appendChild(offerSaveBtn)
+
+  // Unsaved text in the three tabs above is guarded like the edit form. The baseline is the
+  // textarea's own value (the API normalises CRLF to LF, so comparing with the raw field
+  // would always look dirty), moved forward after each successful save.
+  const textAreas = [notesTA, prepTA, offerTA]
+  textAreas.forEach(ta => { ta.dataset.saved = ta.value })
+  const isDirty = () => textAreas.some(ta => ta.value !== ta.dataset.saved)
+  const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    if (isDirty()) e.preventDefault()
+  }
+  window.addEventListener('beforeunload', handleBeforeUnload)
+  setNavigationGuard(() => {
+    if (!isDirty()) return true
+    return confirm(t('form.unsaved_changes'))
+  })
+  setNavigationCleanup(() => {
+    window.removeEventListener('beforeunload', handleBeforeUnload)
+  })
 
   // Interviews tab
   const interviewsPanel = document.createElement('div')
@@ -647,17 +789,26 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     addBtn.addEventListener('click', () => {
       const { el, getData } = buildInterviewForm()
       const modal = openModal({ title: t('detail.interview_add_title'), content: el })
-      el.querySelector('[data-save]')?.addEventListener('click', async () => {
+      const saveBtn = el.querySelector<HTMLButtonElement>('[data-save]')!
+      saveBtn.addEventListener('click', async () => {
+        // Locked while the request is in flight and left locked on success (the modal is
+        // closing), so a double click cannot create the interview twice.
+        if (saveBtn.disabled) return
+        saveBtn.disabled = true
+        let created: Interview
         try {
-          const data = getData()
-          const created = await api.interviews.create(id, data)
-          list.push(created)
-          modal.close()
-          renderInterviews(list)
-          toast(t('detail.interview_add_title'), 'success')
+          created = await api.interviews.create(id, getData())
         } catch {
+          saveBtn.disabled = false
           toast(t('form.error'), 'error')
+          return
         }
+        list.push(created)
+        modal.close()
+        renderInterviews(list)
+        updateTabCounts()
+        void refreshTimeline()
+        toast(t('detail.interview_added'), 'success')
       })
     })
     interviewsPanel.appendChild(addBtn)
@@ -676,6 +827,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       const card = document.createElement('div')
       card.className = 'border border-border/50 rounded p-4 backdrop-blur-sm'
       card.style.background = 'rgb(var(--color-surface-1) / 0.4)'
+      // scheduled_at is a floating wall-clock time (the typed local time, labelled Z):
+      // format it in UTC so it shows exactly what was entered.
       card.innerHTML = `
         <div class="flex items-start justify-between gap-2">
           <div class="flex-1 min-w-0">
@@ -684,33 +837,39 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
               <span class="text-xs text-muted bg-surface-2 rounded px-2 py-0.5 font-medium">${esc(interviewTypeLabel(iv.type))}</span>
               ${iv.outcome ? `<span class="badge ${OUTCOME_COLORS[iv.outcome] ?? ''}">${esc(interviewOutcomeLabel(iv.outcome))}</span>` : ''}
             </div>
-            ${iv.scheduled_at ? `<p class="text-xs text-muted mt-1 tabular-nums">${new Date(iv.scheduled_at).toLocaleString(dateFmt, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}${iv.duration_minutes ? ` \u00b7 ${iv.duration_minutes} min` : ''}</p>` : ''}
+            ${iv.scheduled_at ? `<p class="text-xs text-muted mt-1 tabular-nums">${new Date(iv.scheduled_at).toLocaleString(dateFmt, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}${iv.duration_minutes ? ` \u00b7 ${iv.duration_minutes} min` : ''}</p>` : ''}
             ${iv.interviewer_name ? `<p class="text-xs text-muted">${esc(iv.interviewer_name)}${iv.interviewer_role ? ` \u00b7 ${esc(iv.interviewer_role)}` : ''}</p>` : ''}
             ${iv.notes ? `<p class="text-xs text-muted/70 mt-2 line-clamp-2">${esc(iv.notes)}</p>` : ''}
           </div>
           <div class="flex gap-1 shrink-0">
-            <button class="btn-ghost p-1.5 min-w-[44px] min-h-[44px]" data-edit-iv="${iv.id}" aria-label="${t('detail.edit')}">${icons.edit}</button>
-            <button class="btn-danger p-1.5 min-w-[44px] min-h-[44px]" data-del-iv="${iv.id}" aria-label="${t('detail.delete')}">${icons.trash}</button>
+            <button class="btn-ghost p-1.5 min-w-[44px] min-h-[44px]" data-edit-iv="${esc(iv.id)}" aria-label="${t('detail.edit')}">${icons.edit}</button>
+            <button class="btn-danger p-1.5 min-w-[44px] min-h-[44px]" data-del-iv="${esc(iv.id)}" aria-label="${t('detail.delete')}">${icons.trash}</button>
           </div>
         </div>
       `
-      card.querySelector(`[data-edit-iv="${iv.id}"]`)?.addEventListener('click', () => {
+      // Each card holds one button of each kind: no need to put the id in the selector.
+      card.querySelector('[data-edit-iv]')?.addEventListener('click', () => {
         const { el, getData } = buildInterviewForm(iv)
         const modal = openModal({ title: t('detail.interview_edit_title'), content: el })
-        el.querySelector('[data-save]')?.addEventListener('click', async () => {
+        const saveBtn = el.querySelector<HTMLButtonElement>('[data-save]')!
+        saveBtn.addEventListener('click', async () => {
+          if (saveBtn.disabled) return
+          saveBtn.disabled = true
+          let updated: Interview
           try {
-            const data = getData()
-            const updated = await api.interviews.update(iv.id, data)
-            Object.assign(iv, updated)
-            modal.close()
-            renderInterviews(list)
-            toast(t('detail.interview_edit_title'), 'success')
+            updated = await api.interviews.update(iv.id, getData())
           } catch {
+            saveBtn.disabled = false
             toast(t('form.error'), 'error')
+            return
           }
+          Object.assign(iv, updated)
+          modal.close()
+          renderInterviews(list)
+          toast(t('detail.interview_updated'), 'success')
         })
       })
-      card.querySelector(`[data-del-iv="${iv.id}"]`)?.addEventListener('click', () => {
+      card.querySelector('[data-del-iv]')?.addEventListener('click', () => {
         const confirmEl = document.createElement('div')
         confirmEl.className = 'space-y-5'
         confirmEl.innerHTML = `
@@ -729,6 +888,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             if (idx !== -1) list.splice(idx, 1)
             modal.close()
             renderInterviews(list)
+            updateTabCounts()
+            void refreshTimeline()
           } catch {
             toast(t('form.error'), 'error')
           }
@@ -739,7 +900,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     interviewsPanel.appendChild(ivList)
   }
 
-  renderInterviews(app.interviews ?? [])
+  const interviews = app.interviews ?? []
+  renderInterviews(interviews)
 
   // Contacts tab
   const contactsPanel = document.createElement('div')
@@ -753,18 +915,26 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     addBtn.addEventListener('click', () => {
       const { el, getData } = buildContactForm()
       const modal = openModal({ title: t('detail.contact_add_title'), content: el })
-      el.querySelector('[data-save]')?.addEventListener('click', async () => {
+      const saveBtn = el.querySelector<HTMLButtonElement>('[data-save]')!
+      saveBtn.addEventListener('click', async () => {
+        if (saveBtn.disabled) return
         const data = getData()
         if (!data) { toast(t('form.field_required'), 'error'); return }
+        saveBtn.disabled = true
+        let created: Contact
         try {
-          const created = await api.contacts.create(id, data)
-          list.push(created)
-          modal.close()
-          renderContacts(list)
-          toast(t('detail.contact_add_title'), 'success')
+          created = await api.contacts.create(id, data)
         } catch {
+          saveBtn.disabled = false
           toast(t('form.error'), 'error')
+          return
         }
+        list.push(created)
+        modal.close()
+        renderContacts(list)
+        updateTabCounts()
+        void refreshTimeline()
+        toast(t('detail.contact_added'), 'success')
       })
     })
     contactsPanel.appendChild(addBtn)
@@ -782,6 +952,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     list.forEach(c => {
       const row = document.createElement('div')
       row.className = 'flex items-center justify-between gap-2 py-3.5 first:pt-0 last:pb-0'
+      const mailto = c.email ? mailtoHref(c.email) : ''
       row.innerHTML = `
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
@@ -789,34 +960,42 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             ${c.role ? `<span class="text-xs text-muted bg-surface-2 rounded px-2 py-0.5">${esc(c.role)}</span>` : ''}
           </div>
           <div class="flex items-center gap-3 mt-1 flex-wrap">
-            ${c.email ? `<a href="mailto:${esc(c.email)}" class="text-xs text-accent hover:text-accent-hover transition-colors">${esc(c.email)}</a>` : ''}
+            ${c.email ? (mailto
+              ? `<a href="${esc(mailto)}" class="text-xs text-accent hover:text-accent-hover transition-colors">${esc(c.email)}</a>`
+              : `<span class="text-xs text-muted">${esc(c.email)}</span>`) : ''}
             ${c.phone ? `<span class="text-xs text-muted">${esc(c.phone)}</span>` : ''}
             ${c.linkedin && sanitizeUrl(c.linkedin) ? `<a href="${esc(sanitizeUrl(c.linkedin))}" target="_blank" rel="noopener noreferrer" class="text-xs text-accent hover:text-accent-hover transition-colors">LinkedIn</a>` : ''}
           </div>
         </div>
         <div class="flex gap-1 shrink-0">
-          <button class="btn-ghost p-1.5 min-w-[44px] min-h-[44px]" data-edit-c="${c.id}" aria-label="${t('detail.edit')}">${icons.edit}</button>
-          <button class="btn-danger p-1.5 min-w-[44px] min-h-[44px]" data-del-c="${c.id}" aria-label="${t('detail.delete')}">${icons.trash}</button>
+          <button class="btn-ghost p-1.5 min-w-[44px] min-h-[44px]" data-edit-c="${esc(c.id)}" aria-label="${t('detail.edit')}">${icons.edit}</button>
+          <button class="btn-danger p-1.5 min-w-[44px] min-h-[44px]" data-del-c="${esc(c.id)}" aria-label="${t('detail.delete')}">${icons.trash}</button>
         </div>
       `
-      row.querySelector(`[data-edit-c="${c.id}"]`)?.addEventListener('click', () => {
+      row.querySelector('[data-edit-c]')?.addEventListener('click', () => {
         const { el, getData } = buildContactForm(c)
         const modal = openModal({ title: t('detail.contact_edit_title'), content: el })
-        el.querySelector('[data-save]')?.addEventListener('click', async () => {
+        const saveBtn = el.querySelector<HTMLButtonElement>('[data-save]')!
+        saveBtn.addEventListener('click', async () => {
+          if (saveBtn.disabled) return
           const data = getData()
           if (!data) { toast(t('form.field_required'), 'error'); return }
+          saveBtn.disabled = true
+          let updated: Contact
           try {
-            const updated = await api.contacts.update(c.id, data)
-            Object.assign(c, updated)
-            modal.close()
-            renderContacts(list)
-            toast(t('detail.contact_edit_title'), 'success')
+            updated = await api.contacts.update(c.id, data)
           } catch {
+            saveBtn.disabled = false
             toast(t('form.error'), 'error')
+            return
           }
+          Object.assign(c, updated)
+          modal.close()
+          renderContacts(list)
+          toast(t('detail.contact_updated'), 'success')
         })
       })
-      row.querySelector(`[data-del-c="${c.id}"]`)?.addEventListener('click', () => {
+      row.querySelector('[data-del-c]')?.addEventListener('click', () => {
         const confirmEl = document.createElement('div')
         confirmEl.className = 'space-y-5'
         confirmEl.innerHTML = `
@@ -835,6 +1014,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             if (idx !== -1) list.splice(idx, 1)
             modal.close()
             renderContacts(list)
+            updateTabCounts()
+            void refreshTimeline()
           } catch {
             toast(t('form.error'), 'error')
           }
@@ -845,14 +1026,18 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     contactsPanel.appendChild(cList)
   }
 
-  renderContacts(app.contacts ?? [])
+  const contacts = app.contacts ?? []
+  renderContacts(contacts)
 
   // Timeline tab
   const timelinePanel = document.createElement('div')
   timelinePanel.className = 'p-6 space-y-4'
-  if (!app.timeline_events?.length) {
-    timelinePanel.innerHTML = `<p class="text-sm text-muted/60">${t('detail.no_timeline')}</p>`
-  } else {
+  const renderTimeline = () => {
+    timelinePanel.innerHTML = ''
+    if (!app.timeline_events?.length) {
+      timelinePanel.innerHTML = `<p class="text-sm text-muted/60">${t('detail.no_timeline')}</p>`
+      return
+    }
     const list = document.createElement('div')
     list.className = 'relative ml-3'
     const lineDiv = document.createElement('div')
@@ -873,20 +1058,38 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     })
     timelinePanel.appendChild(list)
   }
+  renderTimeline()
+
+  // The server writes the timeline events (and their text, which translateTimelineEvent
+  // parses), so reload them after a change instead of guessing them locally.
+  const refreshTimeline = async () => {
+    try {
+      const fresh = await api.applications.get(id)
+      app.timeline_events = fresh.timeline_events
+      renderTimeline()
+    } catch { /* keep the timeline already shown */ }
+  }
 
   // Assemble tabs
+  const countLabel = (key: string, n: number) => `${t(key)}${n ? ` (${n})` : ''}`
   const tabs = makeTabs([
     { id: 'notes', label: t('detail.tab_notes'), panel: notesPanel },
     { id: 'prep', label: t('detail.tab_prep'), panel: prepPanel },
     { id: 'offer', label: t('detail.tab_offer'), panel: offerPanel },
-    { id: 'interviews', label: `${t('detail.tab_interviews')}${app.interviews?.length ? ` (${app.interviews.length})` : ''}`, panel: interviewsPanel },
-    { id: 'contacts', label: `${t('detail.tab_contacts')}${app.contacts?.length ? ` (${app.contacts.length})` : ''}`, panel: contactsPanel },
+    { id: 'interviews', label: countLabel('detail.tab_interviews', interviews.length), panel: interviewsPanel },
+    { id: 'contacts', label: countLabel('detail.tab_contacts', contacts.length), panel: contactsPanel },
     { id: 'timeline', label: t('detail.tab_timeline'), panel: timelinePanel },
   ])
+  // Called after adding or deleting an interview or a contact (never during the first
+  // render above, before the tabs exist).
+  function updateTabCounts() {
+    tabs.setLabel('interviews', countLabel('detail.tab_interviews', interviews.length))
+    tabs.setLabel('contacts', countLabel('detail.tab_contacts', contacts.length))
+  }
 
   const tabCard = document.createElement('div')
   tabCard.className = 'card !p-0 flex-1 min-w-0 overflow-hidden'
-  tabCard.appendChild(tabs)
+  tabCard.appendChild(tabs.el)
 
   const sidebar = document.createElement('div')
   sidebar.className = 'lg:w-64 shrink-0 space-y-4'
@@ -902,7 +1105,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         <p class="text-xs text-muted mb-0.5 font-medium">${t('form.company_website')}</p>
         <a href="${esc(sanitizeUrl(app.company_website))}" target="_blank" rel="noopener noreferrer"
            class="text-sm text-accent hover:text-accent-hover flex items-center gap-1.5 transition-colors font-medium">
-          ${icons.globe} ${safeHostname(app.company_website)}
+          ${icons.globe} ${esc(safeHostname(app.company_website))}
         </a>
       `
       companyCard.appendChild(row)
@@ -945,6 +1148,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       try {
         await api.applications.delete(app.id)
         modal.close()
+        // The record is gone: do not ask about its unsaved notes on the way out.
+        setNavigationGuard(null)
         navigate('/applications')
       } catch {
         toast(t('form.error'), 'error')

@@ -8,6 +8,9 @@
   }
 
   :root {
+    /* Native widgets (date pickers, select lists, scrollbars) follow the
+       app theme rather than the OS one. */
+    color-scheme: light;
     --color-surface: 250 249 248;
     --color-surface-1: 255 255 255;
     --color-surface-2: 245 245 244;
@@ -34,6 +37,7 @@
   }
 
   .dark {
+    color-scheme: dark;
     --color-surface: 12 10 9;
     --color-surface-1: 28 25 23;
     --color-surface-2: 41 37 36;
@@ -91,7 +95,6 @@
   input[type="number"] { -moz-appearance: textfield; }
 
   input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
-  .dark input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
 }
 
 @layer components {

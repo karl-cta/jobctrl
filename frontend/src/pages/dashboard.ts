@@ -1,6 +1,6 @@
 import { api } from '../api'
 import { createLayout } from '../components/layout'
-import { navigate } from '../router'
+import { rerender, setNavigationCleanup } from '../router'
 import { t, tp, getDateLocale, translateTimelineEvent } from '../i18n'
 import { esc } from '../sanitize'
 import { toast } from '../components/toast'
@@ -123,6 +123,14 @@ function localDayKey(d: Date): string {
   return `${d.getFullYear()}-${m}-${day}`
 }
 
+/** "mercredi 30 septembre" for a `YYYY-MM-DD` day key. Midday avoids the parse
+ *  landing on the previous day in a negative offset. */
+function longDay(iso: string): string {
+  return new Date(iso + 'T12:00:00').toLocaleDateString(getDateLocale(), {
+    weekday: 'long', day: 'numeric', month: 'long',
+  })
+}
+
 // Charts (SVG) — sparkline, 12-week timeline, heatmap
 
 /**
@@ -144,7 +152,8 @@ function sparkline(series: number[] | undefined, color: string): string {
     const y = span === 0 ? H / 2 : H - pad - ((v - min) / span) * (H - pad * 2)
     return `${x.toFixed(1)},${y.toFixed(1)}`
   })
-  return `<svg class="kpi-spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" fill="none" role="img" aria-label="${t('dashboard.kpi_spark')}">
+  // Decorative: the tile's own text carries the value and the delta.
+  return `<svg class="kpi-spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" fill="none" aria-hidden="true">
     <polyline points="${coords.join(' ')}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`
 }
@@ -214,11 +223,14 @@ function timelineChart(weekly: WeeklyPoint[]): string {
     to.setDate(from.getDate() + 6)
     const fmt = (d: Date) => d.toLocaleDateString(loc, { day: 'numeric', month: 'short' })
     const title = fill('dashboard.timeline_week_of', { from: fmt(from), to: fmt(to) })
+    const sentText = count('dashboard.timeline_tip_sent', w.sent)
+    const repliesText = count('dashboard.timeline_tip_replies', w.replies)
+    // The tooltip is aria-hidden, so the label carries the week's figures.
     return `<button type="button" class="tl-hit"
       data-tip-title="${esc(title)}"
-      data-tip-sent="${esc(count('dashboard.timeline_tip_sent', w.sent))}"
-      data-tip-replies="${esc(count('dashboard.timeline_tip_replies', w.replies))}"
-      aria-label="${esc(title)}"></button>`
+      data-tip-sent="${esc(sentText)}"
+      data-tip-replies="${esc(repliesText)}"
+      aria-label="${esc(`${title}: ${sentText}, ${repliesText}`)}"></button>`
   }).join('')
 
   const totalSent = weeks.reduce((a, w) => a + w.sent, 0)
@@ -267,17 +279,21 @@ function heatmapChart(days: ActivityDay[]): string {
     return 1
   }
 
+  // Emitted week by week (the grid flows by column), so document and focus
+  // order are chronological. Only today is a tab stop; arrow keys walk the
+  // other days (see wireHeatmapDays).
+  const todayKey = localDayKey(today)
   let cells = ''
-  for (let row = 0; row < 7; row++) {
-    for (let col = 0; col < WEEKS; col++) {
+  for (let col = 0; col < WEEKS; col++) {
+    for (let row = 0; row < 7; row++) {
       const d = new Date(start)
       d.setDate(start.getDate() + col * 7 + row)
       if (d > today) { cells += `<i aria-hidden="true" class="opacity-0"></i>`; continue }
       const iso = localDayKey(d)
       const c = byDate.get(iso) ?? 0
       const lvl = level(c)
-      const label = `${iso} · ${c} ${c === 1 ? t('dashboard.heatmap_event_one') : t('dashboard.heatmap_event_other')}`
-      cells += `<i data-l="${lvl}" data-day="${iso}" role="button" tabindex="0" title="${esc(label)}" aria-label="${esc(label)}"></i>`
+      const label = `${longDay(iso)} · ${c} ${c === 1 ? t('dashboard.heatmap_event_one') : t('dashboard.heatmap_event_other')}`
+      cells += `<i data-l="${lvl}" data-day="${iso}" role="button" tabindex="${iso === todayKey ? '0' : '-1'}" title="${esc(label)}" aria-label="${esc(label)}"></i>`
     }
   }
 
@@ -304,7 +320,7 @@ function heatmapChart(days: ActivityDay[]): string {
   return `
     <div class="heatmap-wrap">
       <div class="heatmap-months" style="grid-template-columns: repeat(${WEEKS}, 1fr)">${monthRow}</div>
-      <div class="heatmap" role="img" aria-label="${t('dashboard.heatmap_title')}" style="grid-template-columns: repeat(${WEEKS}, 1fr); grid-template-rows: repeat(7, 1fr)">${cells}</div>
+      <div class="heatmap" role="group" aria-label="${t('dashboard.heatmap_title')}" style="grid-template-columns: repeat(${WEEKS}, 1fr); grid-template-rows: repeat(7, 1fr); grid-auto-flow: column">${cells}</div>
       <div class="heatmap-legend">
         <span class="text-[11px] font-medium text-muted/70 font-caption">${t('dashboard.heatmap_less')}</span>
         <i></i>
@@ -381,29 +397,36 @@ function eventLabel(type: string): string {
   return translated === key ? type.replace('_', ' ') : translated
 }
 
-/** `interview_held` descriptions arrive as "<Type> · round <n>"; only the
- *  leading type token is ours to localise, the rest passes through. */
+/** `interview_held` descriptions arrive as "<Type> · round <n>" (English,
+ *  built by the server): the type and the round word are localised. */
 function heldDescription(description: string): string {
+  const m = description.match(/^(.+) · round (\d+)$/)
+  if (m) return `${interviewTypeLabel(m[1])} · ${t('detail.round').toLowerCase()} ${m[2]}`
   const sep = description.indexOf(' · ')
   if (sep === -1) return interviewTypeLabel(description)
   return interviewTypeLabel(description.slice(0, sep)) + description.slice(sep)
 }
 
-/** "auj. 10:24" · "hier" · "14 avr." */
-function feedTime(raw: string): string {
-  const d = new Date(raw.replace(' ', 'T'))
+/** "auj. 10:24" · "hier" · "14 avr.": timeline events are real instants,
+ *  shown in the reader's zone. `floating` values (an interview's scheduled_at)
+ *  are wall-clock times labelled UTC, so they are read back in UTC. */
+function feedTime(raw: string, floating = false): string {
+  const d = parseUTC(raw)
   if (isNaN(d.getTime())) return ''
   const loc = getDateLocale()
-  const startOfToday = new Date()
-  startOfToday.setHours(0, 0, 0, 0)
-  const startOfDay = new Date(d)
-  startOfDay.setHours(0, 0, 0, 0)
-  const diffDays = Math.round((startOfToday.getTime() - startOfDay.getTime()) / 86400000)
+  const zone: Intl.DateTimeFormatOptions = floating ? { timeZone: 'UTC' } : {}
+  // Compare calendar days, so DST changes cannot skew the count.
+  const now = new Date()
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  const day = floating
+    ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+    : Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
+  const diffDays = Math.round((today - day) / 86400000)
   if (diffDays === 0) {
-    return `${t('dashboard.time_today')} ${d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' })}`
+    return `${t('dashboard.time_today')} ${d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit', ...zone })}`
   }
   if (diffDays === 1) return t('dashboard.time_yesterday')
-  return d.toLocaleDateString(loc, { day: 'numeric', month: 'short' })
+  return d.toLocaleDateString(loc, { day: 'numeric', month: 'short', ...zone })
 }
 
 /** Panel header: title, sub, optional right-hand slot. */
@@ -431,7 +454,9 @@ function panelHandle(): string {
 function panelOpen(id: PanelId, label: string, card = true): string {
   const span = FULL_WIDTH.includes(id) ? ' data-span="full"' : ''
   const cls = card ? 'dash-panel dash-panel-card' : 'dash-panel'
-  return `<section class="${cls}" data-panel-id="${id}"${span} draggable="true" aria-label="${label}">${panelHandle()}`
+  // `draggable` is only set in reorder mode (setReorder): a draggable panel
+  // cannot have its text selected with the mouse.
+  return `<section class="${cls}" data-panel-id="${id}"${span} aria-label="${label}">${panelHandle()}`
 }
 
 // KPI tiles
@@ -459,14 +484,14 @@ function kpiTile(label: string, kpi: KPI | undefined, colorVar: string, opts: Kp
       const up = diff > 0
       const tone = opts.neutral ? 'flat' : (up ? 'up' : 'down')
       const arrow = up ? '▲' : '▼'
-      delta = `<div class="kpi-delta ${tone}">${arrow} ${up ? '+' : '-'}${Math.abs(diff)} ${opts.deltaUnit}</div>`
+      delta = `<div class="kpi-delta ${tone}"><span aria-hidden="true">${arrow}</span> ${up ? '+' : '-'}${Math.abs(diff)} ${opts.deltaUnit}</div>`
     }
   }
 
-  const aria = t('dashboard.kpi_link').replace('{label}', label)
-
+  // No aria-label: the link is named by its content, so the label, the value
+  // and the delta are all read out.
   return `
-    <a href="${opts.href}" data-link class="kpi" aria-label="${esc(aria)}">
+    <a href="${esc(opts.href)}" data-link class="kpi">
       <div class="kpi-label">${label}</div>
       <div class="kpi-value"><span data-count-to="${value}">${value}</span></div>
       ${delta}
@@ -482,15 +507,23 @@ function periodToken(days: number | undefined): string {
   return ''
 }
 
+/** The list a tile leads to, filtered like the tile's own count: sent
+ *  applications only, over the same window (`period` left out for all time). */
+function kpiHref(query: string, days: number | undefined): string {
+  const period = days === 30 || days === 90 || days === 365 ? `&period=${days}` : ''
+  return `/applications?${query}${period}`
+}
+
 function kpisPanel(period: PeriodStats | undefined): string {
   const token = periodToken(period?.days)
+  const days = period?.days
   const tiles = [
-    kpiTile(t('dashboard.kpi_sent'), period?.sent, 'chart-sent', { href: '/applications', deltaUnit: token }),
-    kpiTile(t('dashboard.kpi_responded'), period?.responded, 'chart-replies', { href: '/applications?has_reply=1', deltaUnit: token }),
-    kpiTile(t('dashboard.kpi_no_reply'), period?.no_reply, 'chart-no-reply', { href: '/applications?status=NoReply', deltaUnit: token, neutral: true }),
-    kpiTile(t('dashboard.kpi_interviews'), period?.interviews, 'chart-interviews', { href: '/applications?has_interviews=1', deltaUnit: token }),
-    kpiTile(t('dashboard.kpi_rejected'), period?.rejected, 'chart-neutral', { href: '/applications?status=Rejected', deltaUnit: token, neutral: true }),
-    kpiTile(t('dashboard.kpi_offers'), period?.offers, 'chart-offers', { href: '/applications?status=Offer', deltaUnit: token }),
+    kpiTile(t('dashboard.kpi_sent'), period?.sent, 'chart-sent', { href: kpiHref('sent=1', days), deltaUnit: token }),
+    kpiTile(t('dashboard.kpi_responded'), period?.responded, 'chart-replies', { href: kpiHref('has_reply=1&sent=1', days), deltaUnit: token }),
+    kpiTile(t('dashboard.kpi_no_reply'), period?.no_reply, 'chart-no-reply', { href: kpiHref('status=NoReply', days), deltaUnit: token, neutral: true }),
+    kpiTile(t('dashboard.kpi_interviews'), period?.interviews, 'chart-interviews', { href: kpiHref('has_interviews=1&sent=1', days), deltaUnit: token }),
+    kpiTile(t('dashboard.kpi_rejected'), period?.rejected, 'chart-neutral', { href: kpiHref('status=Rejected', days), deltaUnit: token, neutral: true }),
+    kpiTile(t('dashboard.kpi_offers'), period?.offers, 'chart-offers', { href: kpiHref('status=Offer,Accepted', days), deltaUnit: token }),
   ].join('')
 
   return `
@@ -509,21 +542,29 @@ function funnelPanel(period: PeriodStats | undefined): string {
   const f = period?.funnel
   const sent = f?.sent ?? 0
   const responded = f?.responded ?? 0
-  const sub = fill('dashboard.funnel_sub', { sent, period: periodText })
+  const sub = tp('dashboard.funnel_sub', sent).replace('{sent}', String(sent)).replace('{period}', periodText)
+
+  // A refusal is a reply: it is counted in the first bar, not in the rest.
+  const rejected = Math.round(period?.rejected?.value ?? 0)
+  const respondedLabel = rejected > 0
+    ? `${t('dashboard.funnel_responded')}, ${count('dashboard.funnel_responded_rejected', rejected)}`
+    : t('dashboard.funnel_responded')
 
   const rows: Array<{ label: string; value: number; color: string }> = [
-    { label: t('dashboard.funnel_responded'), value: responded, color: 'chart-replies' },
+    { label: respondedLabel, value: responded, color: 'chart-replies' },
     { label: t('dashboard.funnel_interviewing'), value: f?.interviewing ?? 0, color: 'chart-interviews' },
     { label: t('dashboard.funnel_offer'), value: f?.offers ?? 0, color: 'chart-offers' },
     { label: t('dashboard.funnel_accepted'), value: f?.accepted ?? 0, color: 'chart-accepted' },
   ]
 
-  // Same period as the funnel, so these add up against `sent`. Clamped because
-  // the three are computed independently server-side.
-  const rejected = Math.round(period?.rejected?.value ?? 0)
+  // Same period as the funnel: what is not in the replies bar is either
+  // unanswered or still pending, so replies + these two add up to `sent`.
+  // Clamped because the counts are computed independently server-side.
   const noReply = Math.round(period?.no_reply?.value ?? 0)
   const pending = Math.max(0, sent - responded - noReply)
 
+  // "50 %" in French, "50%" in English.
+  const percent = new Intl.NumberFormat(getDateLocale(), { style: 'percent', maximumFractionDigits: 0 })
   const body = sent === 0
     ? `<div class="panel-empty">${t('dashboard.no_data')}</div>`
     : `<div class="funnel">${rows.map(r => {
@@ -535,10 +576,10 @@ function funnelPanel(period: PeriodStats | undefined): string {
             <div class="fun-bar-wrap">
               <div class="fun-bar" style="width:0%;background:rgb(var(--${r.color}))" data-bar-width="${width.toFixed(1)}%"></div>
             </div>
-            <div class="fun-count">${r.value} · ${pct.toFixed(0)} %</div>
+            <div class="fun-count">${r.value} · ${esc(percent.format(pct / 100))}</div>
           </div>`
       }).join('')}
-      <div class="fun-rest">${fill('dashboard.funnel_rest', { rejected, no_reply: noReply, pending })}</div>
+      <div class="fun-rest">${fill('dashboard.funnel_others', { no_reply: noReply, pending })}</div>
     </div>`
 
   return `
@@ -576,7 +617,7 @@ function pipelinePanel(byStatus: Partial<Record<ApplicationStatus, number>>, tot
 
   return `
     ${panelOpen('pipeline', t('dashboard.status_breakdown'))}
-      ${panelHead(t('dashboard.status_breakdown'), interpolate('dashboard.status_breakdown_sub', total))}
+      ${panelHead(t('dashboard.status_breakdown'), total > 0 ? count('dashboard.status_breakdown_sub', total) : undefined)}
       ${body}
     </section>`
 }
@@ -587,7 +628,7 @@ function sourcesPanel(sources: Array<{ source: string; count: number }>): string
   const rows = sources.map((src, i) => {
     const domain = getSourceDomain(src.source)
     const favicon = domain
-      ? `<img src="${faviconUrl(domain)}" width="16" height="16" alt="" class="source-favicon" onerror="this.style.display='none'" />`
+      ? `<img src="${esc(faviconUrl(domain))}" width="16" height="16" alt="" loading="lazy" class="source-favicon" data-hide-on-error />`
       : ''
     return `
       <a href="/applications?source=${encodeURIComponent(src.source)}" data-link class="src-row${i >= LIST_LIMIT ? ' src-extra' : ''}">
@@ -598,7 +639,7 @@ function sourcesPanel(sources: Array<{ source: string; count: number }>): string
 
   const extra = sources.length - LIST_LIMIT
   const toggle = extra > 0
-    ? `<button type="button" class="src-more" data-src-more="${extra}" aria-expanded="false">${interpolate('dashboard.sources_more', extra)}</button>`
+    ? `<button type="button" class="src-more" data-src-more="${extra}" aria-expanded="false">${count('dashboard.sources_more', extra)}</button>`
     : ''
 
   return `
@@ -611,16 +652,19 @@ function sourcesPanel(sources: Array<{ source: string; count: number }>): string
 
 // Active processes
 
-/** `at` arrives as a UTC `2006-01-02 15:04:05` string. */
+/** Server datetimes arrive as `2006-01-02 15:04:05` (UTC, no zone) or as
+ *  RFC 3339 with a zone; `Z` is only appended when the zone is missing. */
 function parseUTC(at: string): Date {
-  return new Date(at.replace(' ', 'T') + 'Z')
+  const s = at.trim().replace(' ', 'T')
+  return new Date(/(Z|[+-]\d{2}:?\d{2})$/i.test(s) ? s : s + 'Z')
 }
 
-/** "21 sept." — the interview day in the reader's own timezone. */
+/** "21 sept.": the interview day as typed. Interview times are floating
+ *  wall-clock times labelled UTC, so they are formatted in UTC. */
 function stepDate(at: string): string {
   const d = parseUTC(at)
   if (isNaN(d.getTime())) return ''
-  return d.toLocaleDateString(getDateLocale(), { day: 'numeric', month: 'short' })
+  return d.toLocaleDateString(getDateLocale(), { day: 'numeric', month: 'short', timeZone: 'UTC' })
 }
 
 /** "21 sept. 14:30" — used for a scheduled interview, where the hour matters. */
@@ -628,8 +672,8 @@ function stepDateTime(at: string): string {
   const d = parseUTC(at)
   if (isNaN(d.getTime())) return ''
   const loc = getDateLocale()
-  const day = d.toLocaleDateString(loc, { day: 'numeric', month: 'short' })
-  return `${day} ${d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' })}`
+  const day = d.toLocaleDateString(loc, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+  return `${day} ${d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}`
 }
 
 /** The one-line "where this process stands" caption. */
@@ -664,7 +708,7 @@ function activePanel(processes: ActiveProcess[]): string {
       : t('dashboard.active_silent').replace('{n}', String(days))
     const tone = silenceTone(days)
     return `
-      <a href="/applications/${p.id}" data-link class="ap-row">
+      <a href="/applications/${esc(p.id)}" data-link class="ap-row">
         <span class="ap-head">
           <b>${esc(p.company_name)}</b>
           <span class="ap-job">${esc(p.job_title)}</span>
@@ -690,8 +734,8 @@ function activityFeed(items: ActivityItem[]): string {
       ${items.map(it => {
         const badge = eventBadgeColors[it.event_type] ?? 'bg-stone-500/15 text-stone-600 dark:text-stone-400'
         return `
-          <a href="/applications/${it.application_id}" data-link class="feed-item">
-            <div class="feed-time">${esc(feedTime(it.time))}</div>
+          <a href="/applications/${esc(it.application_id)}" data-link class="feed-item">
+            <div class="feed-time">${esc(feedTime(it.time, it.event_type === 'interview_held'))}</div>
             <div class="feed-what">
               <span class="feed-tag ${badge}">${esc(eventLabel(it.event_type))}</span><b>${esc(it.company_name)}</b> — ${esc(it.event_type === 'interview_held'
                 ? heldDescription(it.description)
@@ -720,7 +764,7 @@ function renderPanel(id: PanelId, stats: Stats | null): string {
     case 'follow-ups': {
       if (!stats?.follow_ups?.length) return ''
       return `
-        <section class="dash-panel dash-panel-card border-amber-500/20 dark:border-amber-400/15" data-panel-id="follow-ups" data-span="full" draggable="true" aria-label="${t('dashboard.follow_ups_title')}">
+        <section class="dash-panel dash-panel-card border-amber-500/20 dark:border-amber-400/15" data-panel-id="follow-ups" data-span="full" aria-label="${t('dashboard.follow_ups_title')}">
           ${panelHandle()}
           <div class="flex items-start gap-3 mb-5">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-amber-500 mt-0.5 shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
@@ -731,23 +775,26 @@ function renderPanel(id: PanelId, stats: Stats | null): string {
           </div>
           <div class="space-y-3" id="follow-up-list">
             ${stats.follow_ups.map(f => {
-              const ivDate = f.last_interview_at ? new Date(f.last_interview_at.replace(' ', 'T')) : null
-              const daysAgo = ivDate ? Math.floor((Date.now() - ivDate.getTime()) / 86400000) : 0
+              // Parsed as UTC, like the server's own silent_days count on the
+              // same value; an unparseable date shows no age rather than NaN.
+              const ivTime = f.last_interview_at ? parseUTC(f.last_interview_at).getTime() : NaN
+              const daysAgo = isNaN(ivTime) ? null : Math.floor((Date.now() - ivTime) / 86400000)
+              const id = esc(f.id)
               return `
-              <div class="rounded border border-border/60 p-4" data-follow-up-id="${f.id}">
+              <div class="rounded border border-border/60 p-4" data-follow-up-id="${id}">
                 <div class="flex items-start justify-between gap-3 mb-3">
-                  <a href="/applications/${f.id}" data-link class="flex-1 min-w-0 no-underline group">
+                  <a href="/applications/${id}" data-link class="flex-1 min-w-0 no-underline group">
                     <span class="text-sm font-semibold text-primary group-hover:text-accent transition-colors block">${esc(f.company_name)}</span>
                     <span class="text-sm text-muted block mt-0.5">${esc(f.job_title)}</span>
                   </a>
-                  <span class="text-xs text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">${t('dashboard.follow_up_days_ago').replace('{days}', String(daysAgo))}</span>
+                  ${daysAgo === null ? '' : `<span class="text-xs text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">${t('dashboard.follow_up_days_ago').replace('{days}', String(daysAgo))}</span>`}
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="text-xs text-muted mr-auto">${t('dashboard.follow_up_remind_later')}</span>
-                  <button data-snooze-id="${f.id}" data-snooze-days="7" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors">${t('dashboard.follow_up_snooze_1w')}</button>
-                  <button data-snooze-id="${f.id}" data-snooze-days="14" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors hidden sm:block">${t('dashboard.follow_up_snooze_2w')}</button>
-                  <button data-snooze-id="${f.id}" data-snooze-days="21" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors hidden sm:block">${t('dashboard.follow_up_snooze_3w')}</button>
-                  <button data-skip-id="${f.id}" class="text-xs px-3 py-2 rounded-full border border-border text-muted/50 hover:text-rose-500 hover:border-rose-300 dark:hover:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">${t('dashboard.follow_up_skip')}</button>
+                  <button data-snooze-id="${id}" data-snooze-days="7" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors">${t('dashboard.follow_up_snooze_1w')}</button>
+                  <button data-snooze-id="${id}" data-snooze-days="14" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors hidden sm:block">${t('dashboard.follow_up_snooze_2w')}</button>
+                  <button data-snooze-id="${id}" data-snooze-days="21" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors hidden sm:block">${t('dashboard.follow_up_snooze_3w')}</button>
+                  <button data-skip-id="${id}" class="text-xs px-3 py-2 rounded-full border border-border text-muted/50 hover:text-rose-500 hover:border-rose-300 dark:hover:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">${t('dashboard.follow_up_skip')}</button>
                 </div>
               </div>`
             }).join('')}
@@ -776,7 +823,7 @@ function renderPanel(id: PanelId, stats: Stats | null): string {
       const interactions = days.reduce((a, d) => a + d.count, 0)
       return `
         ${panelOpen('heatmap', t('dashboard.heatmap_title'))}
-          ${panelHead(t('dashboard.heatmap_title'), t('dashboard.heatmap_desc'), interpolate('dashboard.heatmap_total', interactions))}
+          ${panelHead(t('dashboard.heatmap_title'), t('dashboard.heatmap_desc'), count('dashboard.heatmap_total', interactions))}
           ${heatmapChart(days)}
         </section>`
     }
@@ -821,7 +868,23 @@ function setupDragAndDrop(root: HTMLElement, setOrder: (o: PanelId[]) => void) {
 
   const panels = () => Array.from(container.querySelectorAll<HTMLElement>('.dash-panel'))
 
-  const persist = () => setOrder(panels().map(p => p.dataset.panelId as PanelId))
+  /** Saves the on-screen order without losing the slot of the panels that are
+   *  not rendered right now (no follow-ups due, no sources...): each one goes
+   *  back right after the panel that preceded it in the previous order. */
+  const persist = () => {
+    const merged = panels().map(p => p.dataset.panelId as PanelId)
+    const previous = loadOrder()
+    previous.forEach((id, i) => {
+      if (merged.includes(id)) return
+      let at = 0
+      for (let j = i - 1; j >= 0; j--) {
+        const k = merged.indexOf(previous[j])
+        if (k !== -1) { at = k + 1; break }
+      }
+      merged.splice(at, 0, id)
+    })
+    setOrder(merged)
+  }
 
   const onDragStart = (e: DragEvent) => {
     if (!root.classList.contains('dash-reorder-mode')) { e.preventDefault(); return }
@@ -863,7 +926,8 @@ function setupDragAndDrop(root: HTMLElement, setOrder: (o: PanelId[]) => void) {
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
-    if (!dragged || !placeholder) return
+    // Dropped where it was picked up: the placeholder was never inserted.
+    if (!dragged || !placeholder || !placeholder.isConnected) { onDragEnd(); return }
     container.insertBefore(dragged, placeholder)
     placeholder.remove()
     placeholder = null
@@ -883,6 +947,18 @@ function setupDragAndDrop(root: HTMLElement, setOrder: (o: PanelId[]) => void) {
   container.addEventListener('drop', onDrop)
   container.addEventListener('dragend', onDragEnd)
 
+  // Screen readers hear where a keyboard move put the panel.
+  const announce = (panel: HTMLElement) => {
+    const live = root.querySelector('#reorder-live')
+    if (!live) return
+    const all = panels()
+    live.textContent = fill('dashboard.reorder_moved', {
+      panel: panel.getAttribute('aria-label') ?? '',
+      n: all.indexOf(panel) + 1,
+      total: all.length,
+    })
+  }
+
   // Keyboard reorder: arrows move the focused panel (left/right behave like up/down).
   container.addEventListener('keydown', (e) => {
     if (!root.classList.contains('dash-reorder-mode')) return
@@ -894,11 +970,11 @@ function setupDragAndDrop(root: HTMLElement, setOrder: (o: PanelId[]) => void) {
     if (back && panel.previousElementSibling) {
       e.preventDefault()
       container.insertBefore(panel, panel.previousElementSibling)
-      persist(); panel.focus()
+      persist(); panel.focus(); announce(panel)
     } else if (forward && panel.nextElementSibling) {
       e.preventDefault()
       container.insertBefore(panel.nextElementSibling, panel)
-      persist(); panel.focus()
+      persist(); panel.focus(); announce(panel)
     }
   })
 }
@@ -930,6 +1006,18 @@ function headerSubtitle(stats: Stats | null): string {
   return `${currentWeekRange()} · ${parts.join(' · ')}`
 }
 
+/** Shown in place of the panels when the stats cannot be loaded, so a server
+ *  hiccup never reads as an empty search. Not a `.dash-panel`: reordering
+ *  and the saved order ignore it. */
+function loadErrorBlock(): string {
+  return `
+    <div class="dash-panel-card text-center" data-span="full" role="alert">
+      <p class="text-primary font-semibold mb-1">${t('dashboard.load_error')}</p>
+      <p class="text-sm text-muted mb-5">${t('common.load_error_hint')}</p>
+      <button type="button" id="dash-retry" class="btn-primary">${t('common.retry')}</button>
+    </div>`
+}
+
 // Main page
 
 export async function DashboardPage(): Promise<HTMLElement> {
@@ -952,7 +1040,7 @@ export async function DashboardPage(): Promise<HTMLElement> {
           `).join('')}
         </div>
         <div class="relative" id="data-menu">
-          <button id="data-menu-btn" class="btn-ghost p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-muted" title="${t('dashboard.data_menu')}" aria-haspopup="true" aria-expanded="false">
+          <button id="data-menu-btn" class="btn-ghost p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-muted" title="${t('dashboard.data_menu')}" aria-expanded="false" aria-controls="data-menu-dropdown">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm6 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm6 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"/></svg>
           </button>
           <div id="data-menu-dropdown" class="hidden absolute right-0 top-full mt-1 z-50 rounded border border-border shadow-elevated py-1" style="background: rgb(var(--color-surface-1));">
@@ -982,9 +1070,10 @@ export async function DashboardPage(): Promise<HTMLElement> {
         <button id="reorder-reset" class="text-xs px-3 py-1.5 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors">${t('dashboard.reorder_reset')}</button>
         <button id="reorder-done" class="text-xs px-3 py-1.5 rounded-full bg-primary text-[rgb(var(--color-surface))] font-medium hover:opacity-85 transition-opacity">${t('dashboard.reorder_done')}</button>
       </div>
+      <span id="reorder-live" class="sr-only" role="status"></span>
     </div>
 
-    <div id="dashboard-panels">${renderPanels(stats)}</div>
+    <div id="dashboard-panels">${stats ? renderPanels(stats) : loadErrorBlock()}</div>
   `
 
   const panelsEl = content.querySelector('#dashboard-panels') as HTMLElement
@@ -992,8 +1081,12 @@ export async function DashboardPage(): Promise<HTMLElement> {
   // ---- Panel wiring (re-run after every period change) ----------------------
 
   const dismissFollowUp = (appId: string) => {
-    const card = content.querySelector(`[data-follow-up-id="${appId}"]`) as HTMLElement | null
+    const card = content.querySelector(`[data-follow-up-id="${CSS.escape(appId)}"]`) as HTMLElement | null
     if (!card) return
+    // The header counts the reminders due: keep it in step with the list.
+    if (stats?.follow_ups) stats.follow_ups = stats.follow_ups.filter(f => f.id !== appId)
+    const subtitle = content.querySelector('#dash-subtitle')
+    if (subtitle) subtitle.textContent = headerSubtitle(stats)
     card.style.opacity = '0'
     card.style.transform = 'translateX(20px)'
     card.style.transition = 'opacity 0.2s ease, transform 0.2s ease'
@@ -1046,8 +1139,10 @@ export async function DashboardPage(): Promise<HTMLElement> {
       hit.addEventListener('mouseenter', () => show(hit))
       hit.addEventListener('focus', () => show(hit))
       hit.addEventListener('blur', hide)
-      // Touch has no hover, so a tap toggles.
-      hit.addEventListener('click', () => { if (active === hit) hide(); else show(hit) })
+      // Touch has no hover: a tap shows the week (it follows the emulated
+      // mouseenter, so toggling here would hide it again at once). Tapping
+      // elsewhere blurs the slot and hides the tooltip.
+      hit.addEventListener('click', () => show(hit))
     })
     chart.addEventListener('mouseleave', hide)
   }
@@ -1058,39 +1153,55 @@ export async function DashboardPage(): Promise<HTMLElement> {
     const dayPanel = wrap?.querySelector<HTMLElement>('.heatmap-day')
     if (!wrap || !dayPanel) return
     let selected: string | null = null
+    // The day the card currently lists (null when closed).
+    let shown: string | null = null
+    // Each request takes a ticket: only the latest one may fill the card, and
+    // closing the card voids any request still in flight.
+    let req = 0
 
-    const close = () => {
-      selected = null
-      dayPanel.hidden = true
-      dayPanel.textContent = ''
+    const highlight = (iso: string | null) => {
       wrap.querySelectorAll('.heatmap-day-selected').forEach(c => c.classList.remove('heatmap-day-selected'))
+      if (iso) wrap.querySelector(`[data-day="${iso}"]`)?.classList.add('heatmap-day-selected')
     }
 
-    const open = async (cell: HTMLElement, iso: string) => {
+    const close = () => {
+      req++
+      selected = null
+      shown = null
+      dayPanel.hidden = true
+      dayPanel.textContent = ''
+      dayPanel.removeAttribute('aria-busy')
+      highlight(null)
+    }
+
+    const open = async (iso: string) => {
       if (selected === iso) { close(); return }
+      const my = ++req
+      // Selected right away, so a second click on the same day closes it.
+      selected = iso
+      highlight(iso)
       dayPanel.setAttribute('aria-busy', 'true')
       let items: ActivityItem[]
       try {
         items = await api.activityByDay(iso)
       } catch {
-        // Keep whatever was on screen rather than blanking the card.
+        if (my !== req) return
+        // Keep whatever was on screen rather than blanking the card, and
+        // point the selection back at the day it shows.
         dayPanel.removeAttribute('aria-busy')
+        selected = shown
+        highlight(shown)
         toast(t('form.error'), 'error')
         return
       }
+      if (my !== req) return
       dayPanel.removeAttribute('aria-busy')
-      selected = iso
-      wrap.querySelectorAll('.heatmap-day-selected').forEach(c => c.classList.remove('heatmap-day-selected'))
-      cell.classList.add('heatmap-day-selected')
+      shown = iso
 
-      // Midday avoids the parse landing on the previous day in a negative offset.
-      const long = new Date(iso + 'T12:00:00').toLocaleDateString(getDateLocale(), {
-        weekday: 'long', day: 'numeric', month: 'long',
-      })
       const noun = items.length === 1 ? t('dashboard.heatmap_event_one') : t('dashboard.heatmap_event_other')
       dayPanel.innerHTML = `
         <div class="heatmap-day-head">
-          <span>${esc(long)} · ${items.length} ${esc(noun)}</span>
+          <span>${esc(longDay(iso))} · ${items.length} ${esc(noun)}</span>
           <button type="button" class="heatmap-day-close" title="${t('dashboard.heatmap_day_close')}" aria-label="${t('dashboard.heatmap_day_close')}">
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
@@ -1100,13 +1211,24 @@ export async function DashboardPage(): Promise<HTMLElement> {
       dayPanel.querySelector('.heatmap-day-close')?.addEventListener('click', close)
     }
 
-    wrap.querySelectorAll<HTMLElement>('[data-day]').forEach(cell => {
+    // Cells are in chronological order: one step is a day, seven a week.
+    const cells = Array.from(wrap.querySelectorAll<HTMLElement>('[data-day]'))
+    const steps: Record<string, number> = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7 }
+    const rove = (to: HTMLElement) => cells.forEach(c => { c.tabIndex = c === to ? 0 : -1 })
+    cells.forEach((cell, i) => {
       const iso = cell.dataset.day!
-      cell.addEventListener('click', () => { void open(cell, iso) })
+      cell.addEventListener('click', () => { rove(cell); void open(iso) })
       cell.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          void open(iso)
+          return
+        }
+        const next = cells[i + (steps[e.key] ?? NaN)]
+        if (!next) return
         e.preventDefault()
-        void open(cell, iso)
+        rove(next)
+        next.focus()
       })
     })
   }
@@ -1147,13 +1269,16 @@ export async function DashboardPage(): Promise<HTMLElement> {
         btn.setAttribute('aria-expanded', open ? 'true' : 'false')
         btn.textContent = open
           ? t('dashboard.sources_less')
-          : interpolate('dashboard.sources_more', Number(btn.dataset.srcMore))
+          : count('dashboard.sources_more', Number(btn.dataset.srcMore))
       })
     })
 
     // Panels keep their reorder affordances across a re-render.
     if (content.classList.contains('dash-reorder-mode')) {
-      panelsEl.querySelectorAll<HTMLElement>('.dash-panel').forEach(p => p.setAttribute('tabindex', '0'))
+      panelsEl.querySelectorAll<HTMLElement>('.dash-panel').forEach(p => {
+        p.setAttribute('tabindex', '0')
+        p.setAttribute('draggable', 'true')
+      })
     }
 
     requestAnimationFrame(() => {
@@ -1169,15 +1294,23 @@ export async function DashboardPage(): Promise<HTMLElement> {
   // ---- Period selector ------------------------------------------------------
 
   const rangeButtons = Array.from(content.querySelectorAll<HTMLButtonElement>('.dash-range button'))
-  const setPeriod = async (next: DashboardPeriod) => {
-    if (next === period) return
-    // Fetch first, commit after: a failed request must leave `period`, the
-    // stored preference and the selector untouched, so clicking again retries
-    // instead of being swallowed by the `next === period` guard.
+  // `requested` is the last period asked for, `period` the one on screen.
+  // Each fetch takes a ticket so that only the latest answer is applied: a
+  // slow older response can no longer overwrite (and persist) a newer choice.
+  let requested = period
+  let statsSeq = 0
+  const fetchStats = async (next: DashboardPeriod, errorKey: string) => {
+    requested = next
+    const my = ++statsSeq
     panelsEl.setAttribute('aria-busy', 'true')
     const fresh = await api.stats(next).catch(() => null) as Stats | null
+    // A newer request owns the panels (and aria-busy) now.
+    if (my !== statsSeq) return
     panelsEl.removeAttribute('aria-busy')
-    if (!fresh) { toast(t('dashboard.period_error'), 'error'); return }
+    // Fetch first, commit after: a failed request must leave `period`, the
+    // stored preference and the selector untouched, and a click on the same
+    // period must retry instead of being swallowed by the guard below.
+    if (!fresh) { requested = period; toast(t(errorKey), 'error'); return }
     period = next
     savePeriod(next)
     rangeButtons.forEach(b => b.setAttribute('aria-selected', b.dataset.period === next ? 'true' : 'false'))
@@ -1187,8 +1320,16 @@ export async function DashboardPage(): Promise<HTMLElement> {
     panelsEl.innerHTML = renderPanels(stats)
     wirePanels()
   }
+  const setPeriod = (next: DashboardPeriod) => {
+    if (next === requested) return
+    void fetchStats(next, 'dashboard.period_error')
+  }
   rangeButtons.forEach(btn => {
-    btn.addEventListener('click', () => { void setPeriod(btn.dataset.period as DashboardPeriod) })
+    btn.addEventListener('click', () => setPeriod(btn.dataset.period as DashboardPeriod))
+  })
+  // Only rendered when the first load failed; a successful fetch replaces it.
+  panelsEl.querySelector('#dash-retry')?.addEventListener('click', () => {
+    void fetchStats(period, 'dashboard.load_error')
   })
 
   // ---- Data menu dropdown ---------------------------------------------------
@@ -1207,10 +1348,18 @@ export async function DashboardPage(): Promise<HTMLElement> {
     dropdown.classList.add('dropdown-enter')
     menuBtn.setAttribute('aria-expanded', 'true')
   })
+  // Removed on the next navigation, so visits do not pile up listeners.
+  const docListeners = new AbortController()
+  setNavigationCleanup(() => docListeners.abort())
   document.addEventListener('click', (e) => {
     if (!content.querySelector('#data-menu')?.contains(e.target as Node) && !dropdown.classList.contains('hidden')) {
       closeMenu()
     }
+  }, { signal: docListeners.signal })
+  content.querySelector('#data-menu')?.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key !== 'Escape' || dropdown.classList.contains('hidden')) return
+    closeMenu()
+    menuBtn.focus()
   })
 
   // ---- Reorder mode ---------------------------------------------------------
@@ -1223,10 +1372,16 @@ export async function DashboardPage(): Promise<HTMLElement> {
     if (on) { reorderBanner.classList.remove('hidden'); reorderBanner.classList.add('flex') }
     else { reorderBanner.classList.add('hidden'); reorderBanner.classList.remove('flex') }
     if (on) {
-      content.querySelectorAll<HTMLElement>('.dash-panel').forEach(p => p.setAttribute('tabindex', '0'))
+      content.querySelectorAll<HTMLElement>('.dash-panel').forEach(p => {
+        p.setAttribute('tabindex', '0')
+        p.setAttribute('draggable', 'true')
+      })
       content.querySelector<HTMLElement>('.dash-panel')?.focus()
     } else {
-      content.querySelectorAll<HTMLElement>('.dash-panel').forEach(p => p.removeAttribute('tabindex'))
+      content.querySelectorAll<HTMLElement>('.dash-panel').forEach(p => {
+        p.removeAttribute('tabindex')
+        p.removeAttribute('draggable')
+      })
     }
   }
   content.querySelector('#reorder-btn')?.addEventListener('click', () => {
@@ -1237,7 +1392,7 @@ export async function DashboardPage(): Promise<HTMLElement> {
   reorderReset.addEventListener('click', () => {
     resetOrder()
     toast(t('dashboard.reorder_reset_done'), 'info')
-    navigate(window.location.pathname + window.location.search)
+    rerender()
   })
 
   setupDragAndDrop(content, saveOrder)
@@ -1246,14 +1401,20 @@ export async function DashboardPage(): Promise<HTMLElement> {
 
   content.querySelector('#export-btn')?.addEventListener('click', async () => {
     closeMenu()
-    const data = await api.export()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `jobctrl-export-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+    try {
+      const data = await api.export()
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      // Named after the reader's own date, not the UTC one.
+      a.download = `jobctrl-export-${localDayKey(new Date())}.json`
+      a.click()
+      // Revoking right away can cancel the download in Safari and Firefox.
+      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    } catch {
+      toast(t('dashboard.export_error'), 'error')
+    }
   })
 
   content.querySelector('#export-csv-btn')?.addEventListener('click', () => {
@@ -1277,7 +1438,7 @@ export async function DashboardPage(): Promise<HTMLElement> {
       const parts = [`${result.imported} ${t('dashboard.import_success')}`]
       if (result.skipped > 0) parts.push(`${result.skipped} ${t('dashboard.import_skipped')}`)
       toast(parts.join(', '), result.imported > 0 ? 'success' : 'info')
-      if (result.imported > 0) setTimeout(() => navigate('/'), 1500)
+      if (result.imported > 0) setTimeout(() => rerender(), 1500)
     } catch {
       toast(t('dashboard.import_error'), 'error')
     } finally {

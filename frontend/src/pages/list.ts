@@ -5,7 +5,7 @@ import { t, tp, getDateLocale } from '../i18n'
 import { icons } from '../icons'
 import { esc } from '../sanitize'
 import { toast } from '../components/toast'
-import { statusLabel, STATUS_COLORS, ALL_STATUSES, type Application, type ApplicationStatus } from '../types'
+import { statusLabel, STATUS_COLORS, ALL_STATUSES, type Application, type ApplicationStatus, type PaginatedResponse } from '../types'
 import { faviconUrl, domainFromUrl } from '../job-boards'
 
 const STATUS_BORDER: Record<string, string> = {
@@ -37,14 +37,29 @@ const CONF_FILL: Record<number, string> = {
   4: 'bg-teal-500 dark:bg-teal-400',
 }
 
+/** `?period=` values the list understands; "all time" is the absence of the param. */
+const LIST_PERIODS = ['30', '90', '365']
+
+/** Decorative star: the rating is spelled out in an sr-only span next to it. */
+const STAR = icons.star.replace('<svg ', '<svg aria-hidden="true" ')
+
+/** `?status=` holds one status or a comma-separated list (the dashboard's
+ *  Offers tile sends `Offer,Accepted`). Unknown values are dropped: the value
+ *  ends up in the kanban markup and in the API query. */
+function parseStatuses(raw: string | null): ApplicationStatus[] {
+  if (!raw) return []
+  const wanted = raw.split(',').map(s => s.trim())
+  return ALL_STATUSES.filter(s => wanted.includes(s))
+}
+
 function companyFavicon(app: Application, cls = 'w-5 h-5'): string {
   const domain = app.company_website ? domainFromUrl(app.company_website) : null
   if (!domain) return ''
-  return `<img src="${faviconUrl(domain, 64)}" alt="" class="source-favicon rounded shrink-0 ${cls}" onerror="this.style.display='none'" />`
+  return `<img src="${esc(faviconUrl(domain, 64))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="source-favicon rounded shrink-0 ${cls}" data-hide-on-error />`
 }
 
 function confidenceMeter(level: number): string {
-  return `<span class="inline-flex gap-1 items-center" aria-label="${t('form.confidence')}: ${level}/4" title="${t('form.confidence_' + level)}">
+  return `<span class="inline-flex gap-1 items-center" role="img" aria-label="${t('form.confidence')}: ${level}/4" title="${t('form.confidence_' + level)}">
     <span class="text-xs text-muted/60">${t('form.confidence')}</span>
     <span class="inline-flex gap-px items-center">${
     [1,2,3,4].map(n =>
@@ -53,34 +68,93 @@ function confidenceMeter(level: number): string {
   }</span></span>`
 }
 
+function ratingStars(rating: number, cls: string): string {
+  return `<span class="text-amber-400 ${cls} flex gap-px"><span class="sr-only">${t('form.rating')}: ${rating}/5</span>${Array.from({ length: rating }, () => STAR).join('')}</span>`
+}
+
+/** Compact, locale-aware salary ("45,5 k€" / "€45.5K"). The currency comes
+ *  from the API or an import, so an unusable code falls back to euros rather
+ *  than throwing inside the list template. */
+function formatSalary(amount: number, currency?: string): string {
+  const cur = currency && /^[A-Z]{3}$/.test(currency) ? currency : 'EUR'
+  try {
+    return new Intl.NumberFormat(getDateLocale(), {
+      style: 'currency', currency: cur, notation: 'compact', maximumFractionDigits: 1,
+    }).format(amount)
+  } catch {
+    return `${amount} ${cur}`
+  }
+}
+
+/** `applied_at` is a calendar date stored as midnight UTC: read it back in UTC
+ *  so it does not slide to the previous day west of Greenwich. */
+function appliedDate(appliedAt: string): string {
+  return new Date(appliedAt).toLocaleDateString(getDateLocale(), { timeZone: 'UTC' })
+}
+
+// View and sort preferences are conveniences: blocked storage (private mode,
+// strict privacy settings) must not keep the list from rendering.
+function readPref(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writePref(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Not persisted, the choice still applies to this visit.
+  }
+}
+
 export async function ListPage(): Promise<HTMLElement> {
   const urlParams = new URLSearchParams(window.location.search)
-  let statusFilter = urlParams.get('status') || ''
+  let statusFilter = parseStatuses(urlParams.get('status'))
   let sourceFilter = urlParams.get('source') || ''
   let hasInterviewsFilter = urlParams.get('has_interviews') === '1'
   let hasReplyFilter = urlParams.get('has_reply') === '1'
-  let searchQuery = ''
-  let sortValue = localStorage.getItem('jc-sort') || 'created_at:desc'
-  let currentPage = 1
-  let viewMode: 'table' | 'kanban' = (localStorage.getItem('jc-view') as 'table' | 'kanban') || 'table'
+  let sentFilter = urlParams.get('sent') === '1'
+  const rawPeriod = urlParams.get('period') || ''
+  let periodFilter = LIST_PERIODS.includes(rawPeriod) ? rawPeriod : ''
+  let searchQuery = urlParams.get('q') || ''
+  let sortValue = readPref('jc-sort') || 'created_at:desc'
+  const rawPage = parseInt(urlParams.get('page') || '', 10)
+  let currentPage = rawPage > 1 ? rawPage : 1
+  let totalPages = 1
+  let viewMode: 'table' | 'kanban' = readPref('jc-view') === 'kanban' ? 'kanban' : 'table'
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   const selectedIds = new Set<string>()
   let selectMode = false
+  // Each load() takes a ticket; a response whose ticket is no longer the
+  // latest is dropped, so overlapping filter changes cannot paint stale rows.
+  let loadSeq = 0
 
   const content = document.createElement('div')
   content.className = 'space-y-6 stagger'
 
-  const hasActiveFilters = () => !!(statusFilter || sourceFilter || hasInterviewsFilter || hasReplyFilter || searchQuery)
+  const hasActiveFilters = () => !!(statusFilter.length || sourceFilter || hasInterviewsFilter || hasReplyFilter || sentFilter || periodFilter || searchQuery)
 
   /** Rewrite the querystring from the live filter state. Clearing one chip used
    *  to reset the URL to a bare `/applications`, silently dropping the other
-   *  filters from the address bar even though they stayed applied. */
+   *  filters from the address bar even though they stayed applied. The status,
+   *  search and page are kept too, so coming back from a detail page restores
+   *  the same list. */
   const syncUrl = () => {
+    // A pending search debounce can fire after a click opened another page:
+    // never rewrite that page's URL.
+    if (window.location.pathname !== '/applications') return
     const q = new URLSearchParams()
-    if (statusFilter) q.set('status', statusFilter)
+    if (statusFilter.length) q.set('status', statusFilter.join(','))
     if (sourceFilter) q.set('source', sourceFilter)
     if (hasInterviewsFilter) q.set('has_interviews', '1')
     if (hasReplyFilter) q.set('has_reply', '1')
+    if (sentFilter) q.set('sent', '1')
+    if (periodFilter) q.set('period', periodFilter)
+    if (searchQuery) q.set('q', searchQuery)
+    if (viewMode === 'table' && currentPage > 1) q.set('page', String(currentPage))
     const qs = q.toString()
     window.history.replaceState({}, '', `/applications${qs ? '?' + qs : ''}`)
   }
@@ -103,34 +177,49 @@ export async function ListPage(): Promise<HTMLElement> {
     `
   }
 
+  /** First load failed: say so, instead of the "no applications yet" state. */
+  function renderLoadError() {
+    content.innerHTML = `
+      <h1 class="text-2xl font-bold text-primary tracking-tight">${t('list.title')}</h1>
+      <div class="text-center py-24" role="alert">
+        <p class="text-primary text-lg font-semibold mb-2">${t('list.load_error')}</p>
+        <p class="text-muted text-sm mb-8">${t('common.load_error_hint')}</p>
+        <button type="button" id="list-retry" class="btn-primary">${t('common.retry')}</button>
+      </div>
+    `
+    content.querySelector('#list-retry')?.addEventListener('click', () => {
+      // Empty the page so load() takes the first-render path and rebuilds
+      // the toolbar, pagination and their listeners.
+      content.innerHTML = ''
+      void load()
+    })
+  }
+
   function renderTable(apps: Application[]): string {
     if (apps.length === 0) return renderEmpty()
     return `<div class="space-y-2">
       ${apps.map(app => `
         <div
-          class="card card-hover flex items-center justify-between gap-4 cursor-pointer group border-l-[3px] ${STATUS_BORDER[app.status] || 'border-l-border'} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-          data-app-id="${app.id}"
-          tabindex="0"
-          role="link"
-          aria-label="${esc(app.company_name)} — ${esc(app.job_title)}"
+          class="card card-hover flex items-center justify-between gap-4 cursor-pointer group border-l-[3px] ${STATUS_BORDER[app.status] || 'border-l-border'}"
+          data-app-id="${esc(app.id)}"
         >
-          <button data-select-id="${app.id}" class="shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${selectedIds.has(app.id) ? 'bg-accent border-accent text-white' : 'border-border hover:border-accent/50'} ${selectMode ? '' : 'hidden'}" aria-pressed="${selectedIds.has(app.id)}">${selectedIds.has(app.id) ? '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>' : ''}</button>
+          <button data-select-id="${esc(app.id)}" class="shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${selectedIds.has(app.id) ? 'bg-accent border-accent text-white' : 'border-border hover:border-accent/50'} ${selectMode ? '' : 'hidden'}" aria-pressed="${selectedIds.has(app.id)}" aria-label="${t('list.select')} ${esc(app.company_name)}">${selectedIds.has(app.id) ? '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>' : ''}</button>
           <div class="flex-1 min-w-0">
-            <div class="mb-1.5">
+            <a href="/applications/${esc(app.id)}" data-link class="block mb-1.5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
               <span class="font-semibold text-primary block break-words sm:truncate">${companyFavicon(app, 'w-5 h-5 sm:w-6 sm:h-6 inline-block -mt-0.5 mr-1.5')}${esc(app.company_name)}</span>
               <span class="text-muted text-sm block break-words sm:truncate">${esc(app.job_title)}</span>
-            </div>
+            </a>
             <div class="flex items-center gap-2.5 flex-wrap">
-              <span class="text-xs font-semibold uppercase tracking-wide ${STATUS_TEXT[app.status] || 'text-muted'}">${statusLabel(app.status as ApplicationStatus)}</span>
+              <span class="text-xs font-semibold uppercase tracking-wide ${STATUS_TEXT[app.status] || 'text-muted'}">${esc(statusLabel(app.status as ApplicationStatus))}</span>
               ${app.confidence ? confidenceMeter(app.confidence) : ''}
               ${app.location ? `<span class="text-xs text-muted flex items-center gap-1"><span aria-hidden="true" class="opacity-60">${icons.pin}</span> ${esc(app.location)}</span>` : ''}
-              ${app.salary ? `<span class="text-xs text-muted tabular-nums font-medium">${app.salary / 1000}k \u20ac</span>` : ''}
-              ${app.applied_at ? `<span class="text-xs text-muted/60 tabular-nums">${new Date(app.applied_at).toLocaleDateString(getDateLocale())}</span>` : ''}
+              ${app.salary ? `<span class="text-xs text-muted tabular-nums font-medium">${esc(formatSalary(app.salary, app.salary_currency))}</span>` : ''}
+              ${app.applied_at ? `<span class="text-xs text-muted/60 tabular-nums">${appliedDate(app.applied_at)}</span>` : ''}
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            ${app.rating ? `<span class="text-amber-400 text-sm flex gap-px">${Array.from({ length: app.rating }, () => icons.star).join('')}</span>` : ''}
-            <button data-delete-id="${app.id}" class="btn-ghost sm:opacity-0 sm:group-hover:opacity-100 group-focus-visible:opacity-100 text-red-500 dark:text-red-400 hover:bg-red-500/10 p-1.5 min-w-[44px] min-h-[44px] transition-all duration-150" title="${t('detail.delete')}">
+            ${app.rating ? ratingStars(app.rating, 'text-sm') : ''}
+            <button data-delete-id="${esc(app.id)}" class="btn-ghost sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 text-red-500 dark:text-red-400 hover:bg-red-500/10 p-1.5 min-w-[44px] min-h-[44px] transition-all duration-150" title="${t('detail.delete')}">
               ${icons.trash}
             </button>
           </div>
@@ -141,7 +230,7 @@ export async function ListPage(): Promise<HTMLElement> {
 
   function renderKanban(apps: Application[], total: number): string {
     const truncated = total > apps.length
-    const columns = statusFilter ? [statusFilter as ApplicationStatus] : ALL_STATUSES
+    const columns = statusFilter.length ? statusFilter : ALL_STATUSES
     const byStatus: Record<string, Application[]> = {}
     for (const s of ALL_STATUSES) byStatus[s] = []
     for (const app of apps) {
@@ -157,29 +246,28 @@ export async function ListPage(): Promise<HTMLElement> {
             return `
               <div class="w-64 flex-shrink-0 flex flex-col">
                 <div class="flex items-center justify-between mb-3 px-1">
-                  <span class="badge ${STATUS_COLORS[status]} text-xs">${statusLabel(status)}</span>
+                  <span class="badge ${STATUS_COLORS[status]} text-xs">${esc(statusLabel(status))}</span>
                   <span class="text-xs text-muted/60 font-medium tabular-nums">${colApps.length}</span>
                 </div>
-                <div class="space-y-2 flex-1 min-h-24 bg-surface-2/30 rounded p-2" data-kanban-col="${status}">
+                <div class="space-y-2 flex-1 min-h-24 bg-surface-2/30 rounded p-2" data-kanban-col="${esc(status)}">
                   ${colApps.length === 0 ? `
                     <div class="border border-dashed border-border/60 h-20 flex items-center justify-center">
                       <span class="text-xs text-muted/30">${t('list.kanban_empty')}</span>
                     </div>
                   ` : colApps.map(app => `
                     <div
-                      class="card !p-3.5 cursor-pointer card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-                      data-app-id="${app.id}"
-                      tabindex="0"
-                      role="link"
-                      aria-label="${esc(app.company_name)} — ${esc(app.job_title)}"
+                      class="card !p-3.5 cursor-pointer card-hover"
+                      data-app-id="${esc(app.id)}"
                     >
-                      <div class="flex items-center gap-2 mb-0.5">${companyFavicon(app)}<span class="font-semibold text-primary text-sm truncate">${esc(app.company_name)}</span></div>
-                      <div class="text-muted text-xs truncate mb-2.5">${esc(app.job_title)}</div>
+                      <a href="/applications/${esc(app.id)}" data-link class="block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+                        <div class="flex items-center gap-2 mb-0.5">${companyFavicon(app)}<span class="font-semibold text-primary text-sm truncate">${esc(app.company_name)}</span></div>
+                        <div class="text-muted text-xs truncate mb-2.5">${esc(app.job_title)}</div>
+                      </a>
                       <div class="flex items-center justify-between gap-1">
-                        <span class="text-xs text-muted/70 tabular-nums font-medium">${app.salary ? `${app.salary / 1000}k \u20ac` : ''}</span>
-                        ${app.rating ? `<span class="text-amber-400 text-xs flex gap-px shrink-0">${Array.from({ length: app.rating }, () => icons.star).join('')}</span>` : ''}
+                        <span class="text-xs text-muted/70 tabular-nums font-medium">${app.salary ? esc(formatSalary(app.salary, app.salary_currency)) : ''}</span>
+                        ${app.rating ? ratingStars(app.rating, 'text-xs shrink-0') : ''}
                       </div>
-                      ${app.applied_at ? `<div class="text-xs text-muted/60 mt-1.5 tabular-nums">${new Date(app.applied_at).toLocaleDateString(getDateLocale())}</div>` : ''}
+                      ${app.applied_at ? `<div class="text-xs text-muted/60 mt-1.5 tabular-nums">${appliedDate(app.applied_at)}</div>` : ''}
                     </div>
                   `).join('')}
                 </div>
@@ -217,29 +305,28 @@ export async function ListPage(): Promise<HTMLElement> {
     const bar = content.querySelector('#bulk-bar') as HTMLElement
     if (!bar) return
     const count = selectedIds.size
+    const countText = count === 1 ? t('list.selected_one') : t('list.selected_other').replace('{count}', String(count))
+    // The bar is display:none at 0, so the count is announced from a live
+    // region that stays in the page.
+    const live = content.querySelector('#bulk-live')
+    if (live) live.textContent = count === 0 ? '' : countText
     if (count === 0) {
       bar.classList.add('hidden')
       return
     }
     bar.classList.remove('hidden')
     const countEl = bar.querySelector('#bulk-count')
-    if (countEl) countEl.textContent = count === 1 ? t('list.selected_one') : t('list.selected_other').replace('{count}', String(count))
+    if (countEl) countEl.textContent = countText
   }
 
   function attachCardListeners() {
+    // The title is a real link (handled by the router); a click anywhere else
+    // on the card opens the application too.
     content.querySelectorAll('[data-app-id]').forEach(el => {
-      const navToApp = (e: Event) => {
+      el.addEventListener('click', (e) => {
         const target = e.target as HTMLElement
-        if (target.closest('[data-delete-id]') || target.closest('[data-select-id]')) return
+        if (target.closest('a, button')) return
         navigate('/applications/' + el.getAttribute('data-app-id'))
-      }
-      el.addEventListener('click', navToApp)
-      el.addEventListener('keydown', (e) => {
-        if ((e as KeyboardEvent).key === 'Enter' || (e as KeyboardEvent).key === ' ') {
-          if ((e.target as HTMLElement).matches('[data-select-id]')) return
-          e.preventDefault()
-          navToApp(e)
-        }
       })
     })
 
@@ -269,8 +356,8 @@ export async function ListPage(): Promise<HTMLElement> {
       el.addEventListener('touchstart', () => {
         longPressTimer = setTimeout(() => {
           if (!selectMode) toggleSelectMode(true)
-          const id = el.dataset.appId!
-          const btn = el.querySelector<HTMLButtonElement>(`[data-select-id="${id}"]`)
+          // One toggle per card, so no id-based selector is needed.
+          const btn = el.querySelector<HTMLButtonElement>('[data-select-id]')
           if (btn) btn.click()
           longPressTimer = null
         }, 500)
@@ -281,13 +368,22 @@ export async function ListPage(): Promise<HTMLElement> {
 
     content.querySelectorAll('[data-delete-id]').forEach(el => {
       el.addEventListener('click', async () => {
-        if (!confirm(t('list.confirm_delete'))) return
         const card = el.closest('[data-app-id]') as HTMLElement | null
+        // Already on its way out: ignore a second activation.
+        if (card?.classList.contains('card-exit')) return
+        if (!confirm(t('list.confirm_delete'))) return
         if (card) {
           card.classList.add('card-exit')
           await new Promise(r => setTimeout(r, 200))
         }
-        await api.applications.delete(el.getAttribute('data-delete-id')!)
+        try {
+          await api.applications.delete(el.getAttribute('data-delete-id')!)
+        } catch {
+          // Bring the card back: it was not deleted.
+          card?.classList.remove('card-exit')
+          toast(t('form.error'), 'error')
+          return
+        }
         load()
       })
     })
@@ -306,20 +402,57 @@ export async function ListPage(): Promise<HTMLElement> {
     }
   }
 
-  async function load() {
+  async function load(): Promise<void> {
+    const seq = ++loadSeq
     const [sortField, sortDir] = sortValue.split(':')
-    const resp = await api.applications.list({
-      status: statusFilter,
-      source: sourceFilter,
-      has_interviews: hasInterviewsFilter,
-      has_reply: hasReplyFilter,
-      search: searchQuery,
-      sort: sortField,
-      dir: sortDir,
-      page: viewMode === 'table' ? currentPage : undefined,
-      per_page: viewMode === 'kanban' ? 200 : 20,
-    }).catch(() => ({ data: [], total: 0, page: 1, per_page: 20, total_pages: 1 }))
+    let resp: PaginatedResponse<Application>
+    try {
+      resp = await api.applications.list({
+        status: statusFilter.join(','),
+        source: sourceFilter,
+        has_interviews: hasInterviewsFilter,
+        has_reply: hasReplyFilter,
+        sent: sentFilter,
+        period: periodFilter,
+        search: searchQuery,
+        sort: sortField,
+        dir: sortDir,
+        page: viewMode === 'table' ? currentPage : undefined,
+        per_page: viewMode === 'kanban' ? 200 : 20,
+      })
+    } catch {
+      if (seq !== loadSeq) return
+      const shown = content.querySelector('#apps-content')
+      if (shown) {
+        // A failed refresh keeps the list on screen rather than looking
+        // like an empty tracker.
+        shown.classList.remove('content-swap')
+        toast(t('list.load_error'), 'error')
+      } else {
+        renderLoadError()
+      }
+      return
+    }
+    if (seq !== loadSeq) return
+
+    // Deleting the last rows of the last page leaves us past the end: step
+    // back to the new last page instead of showing the empty state.
+    if (resp.data.length === 0 && resp.total > 0 && currentPage > resp.total_pages) {
+      currentPage = resp.total_pages
+      syncUrl()
+      return load()
+    }
+
+    totalPages = resp.total_pages
     const apps = resp.data
+
+    // Bulk actions only ever apply to what is on screen: drop selected ids
+    // that a filter, search or page change has hidden.
+    let pruned = false
+    for (const id of [...selectedIds]) {
+      if (!apps.some(a => a.id === id)) { selectedIds.delete(id); pruned = true }
+    }
+    if (pruned) updateBulkBar()
 
     const appsContainer = content.querySelector('#apps-content')
 
@@ -341,6 +474,8 @@ export async function ListPage(): Promise<HTMLElement> {
         </div>
       `
 
+      const showPagination = viewMode === 'table' && resp.total_pages > 1
+
       content.innerHTML = `
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <h1 class="text-2xl font-bold text-primary tracking-tight">${t('list.title')}</h1>
@@ -360,7 +495,7 @@ export async function ListPage(): Promise<HTMLElement> {
               id="search-input"
               placeholder="${t('list.search')}"
               class="input pl-10"
-              value="${searchQuery}"
+              value="${esc(searchQuery)}"
             />
           </div>
           <div class="flex gap-3 sm:contents">
@@ -368,7 +503,8 @@ export async function ListPage(): Promise<HTMLElement> {
               <label for="status-filter" class="sr-only">${t('common.filter_status')}</label>
               <select id="status-filter" class="select">
                 <option value="">${t('list.all_statuses')}</option>
-                ${ALL_STATUSES.map(s => `<option value="${s}" ${statusFilter === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
+                ${statusFilter.length > 1 ? `<option value="${esc(statusFilter.join(','))}" selected hidden data-multi-status>${t('list.multiple_statuses')}</option>` : ''}
+                ${ALL_STATUSES.map(s => `<option value="${s}" ${statusFilter.length === 1 && statusFilter[0] === s ? 'selected' : ''}>${esc(statusLabel(s))}</option>`).join('')}
               </select>
             </div>
             <div class="flex-1 sm:flex-none sm:w-48">
@@ -388,8 +524,18 @@ export async function ListPage(): Promise<HTMLElement> {
           </div>
         </div>
 
-        ${sourceFilter || hasInterviewsFilter || hasReplyFilter ? `
+        ${sentFilter || sourceFilter || hasInterviewsFilter || hasReplyFilter || statusFilter.length > 1 || periodFilter ? `
         <div class="flex items-center gap-2 flex-wrap">
+          ${sentFilter ? `
+          <div id="sent-chip" class="flex items-center chip-enter">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
+              ${t('list.sent_filter')}
+              <button id="clear-sent" class="hover:bg-accent/20 rounded-full p-0.5 transition-colors" title="${t('list.clear_sent')}">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </span>
+          </div>
+          ` : ''}
           ${sourceFilter ? `
           <div id="source-chip" class="flex items-center chip-enter">
             <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
@@ -420,13 +566,32 @@ export async function ListPage(): Promise<HTMLElement> {
             </span>
           </div>
           ` : ''}
+          ${statusFilter.length > 1 ? `
+          <div id="status-chip" class="flex items-center chip-enter">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
+              ${t('form.status')}: ${statusFilter.map(s => esc(statusLabel(s))).join(', ')}
+              <button id="clear-status" class="hover:bg-accent/20 rounded-full p-0.5 transition-colors" title="${t('list.clear_status')}">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </span>
+          </div>
+          ` : ''}
+          ${periodFilter ? `
+          <div id="period-chip" class="flex items-center chip-enter">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
+              ${t('list.period_filter').replace('{n}', periodFilter)}
+              <button id="clear-period" class="hover:bg-accent/20 rounded-full p-0.5 transition-colors" title="${t('list.clear_period')}">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </span>
+          </div>
+          ` : ''}
         </div>
         ` : ''}
 
         <div class="flex items-center justify-between">
           <span id="result-count" class="text-xs text-muted/60 tabular-nums">${resp.total} ${tp('list.result_count', resp.total)}</span>
-          ${viewMode === 'table' && resp.total_pages > 1 ? `
-          <div id="pagination" class="flex items-center gap-1.5">
+          <div id="pagination" class="flex items-center gap-1.5"${showPagination ? '' : ' style="display:none"'}>
             <button id="prev-page" class="btn-ghost p-1.5 ${resp.page <= 1 ? 'opacity-30 pointer-events-none' : ''}" title="${t('list.page_prev')}" ${resp.page <= 1 ? 'disabled' : ''}>
               ${icons.chevronLeft}
             </button>
@@ -435,7 +600,6 @@ export async function ListPage(): Promise<HTMLElement> {
               ${icons.chevronRight}
             </button>
           </div>
-          ` : ''}
         </div>
 
         <div id="apps-content">
@@ -446,27 +610,30 @@ export async function ListPage(): Promise<HTMLElement> {
           <div class="flex items-center gap-2 sm:gap-3 px-4 py-3 sm:px-5 sm:rounded-xl border-t sm:border border-border shadow-elevated" style="background: rgb(var(--color-surface-1));">
             <span id="bulk-count" class="text-sm font-medium text-primary whitespace-nowrap shrink-0"></span>
             <div class="hidden sm:block w-px h-5 bg-border"></div>
-            <select id="bulk-status-select" class="select text-sm py-2 px-2 pr-7 min-w-0 flex-1 sm:flex-none sm:w-auto">
-              ${ALL_STATUSES.map(s => `<option value="${s}">${statusLabel(s)}</option>`).join('')}
+            <select id="bulk-status-select" class="select text-sm py-2 px-2 pr-7 min-w-0 flex-1 sm:flex-none sm:w-auto" aria-label="${t('form.status')}">
+              ${ALL_STATUSES.map(s => `<option value="${s}">${esc(statusLabel(s))}</option>`).join('')}
             </select>
             <button id="bulk-status-btn" class="btn-primary text-sm py-2 px-3" title="${t('list.bulk_status')}"><span class="sm:hidden">OK</span><span class="hidden sm:inline">${t('list.bulk_status')}</span></button>
             <div class="hidden sm:block w-px h-5 bg-border"></div>
             <button id="bulk-delete-btn" class="btn-ghost text-red-500 dark:text-red-400 p-2 sm:px-3 sm:py-2" title="${t('list.bulk_delete')}"><span class="sm:hidden">${icons.trash}</span><span class="hidden sm:inline">${t('list.bulk_delete')}</span></button>
           </div>
         </div>
+        <div id="bulk-live" class="sr-only" role="status"></div>
       `
 
       content.querySelector('#view-table')?.addEventListener('click', () => {
         viewMode = 'table'
-        localStorage.setItem('jc-view', 'table')
+        writePref('jc-view', 'table')
         currentPage = 1
+        syncUrl()
         const selBtn = content.querySelector('#select-mode-btn') as HTMLElement
         if (selBtn) selBtn.classList.remove('hidden')
         load()
       })
       content.querySelector('#view-kanban')?.addEventListener('click', () => {
         viewMode = 'kanban'
-        localStorage.setItem('jc-view', 'kanban')
+        writePref('jc-view', 'kanban')
+        syncUrl()
         toggleSelectMode(false)
         const selBtn = content.querySelector('#select-mode-btn') as HTMLElement
         if (selBtn) selBtn.classList.add('hidden')
@@ -476,35 +643,41 @@ export async function ListPage(): Promise<HTMLElement> {
         toggleSelectMode(!selectMode)
       })
 
-      content.querySelector('#search-input')?.addEventListener('input', (e) => {
-        searchQuery = (e.target as HTMLInputElement).value
-        currentPage = 1
-        if (debounceTimer) clearTimeout(debounceTimer)
-        debounceTimer = setTimeout(() => load(), 200)
-      })
-      content.querySelector('#status-filter')?.addEventListener('change', (e) => {
-        statusFilter = (e.target as HTMLSelectElement).value
-        currentPage = 1
-        load()
-      })
-      content.querySelector('#sort-select')?.addEventListener('change', (e) => {
-        sortValue = (e.target as HTMLSelectElement).value
-        localStorage.setItem('jc-sort', sortValue)
-        currentPage = 1
-        load()
-      })
-      content.querySelector('#prev-page')?.addEventListener('click', () => {
-        if (currentPage > 1) { currentPage--; load() }
-      })
-      content.querySelector('#next-page')?.addEventListener('click', () => {
-        currentPage++; load()
-      })
       const dismissChip = (selector: string) => {
         const chip = content.querySelector(selector)
         if (!chip) return
         chip.classList.replace('chip-enter', 'chip-exit')
         chip.addEventListener('animationend', () => chip.remove(), { once: true })
       }
+
+      content.querySelector('#search-input')?.addEventListener('input', (e) => {
+        searchQuery = (e.target as HTMLInputElement).value
+        currentPage = 1
+        if (debounceTimer) clearTimeout(debounceTimer)
+        debounceTimer = setTimeout(() => { syncUrl(); load() }, 200)
+      })
+      content.querySelector('#status-filter')?.addEventListener('change', (e) => {
+        statusFilter = parseStatuses((e.target as HTMLSelectElement).value)
+        // Picking a single status replaces a multi-status filter.
+        content.querySelector('#status-filter [data-multi-status]')?.remove()
+        dismissChip('#status-chip')
+        currentPage = 1
+        syncUrl()
+        load()
+      })
+      content.querySelector('#sort-select')?.addEventListener('change', (e) => {
+        sortValue = (e.target as HTMLSelectElement).value
+        writePref('jc-sort', sortValue)
+        currentPage = 1
+        syncUrl()
+        load()
+      })
+      content.querySelector('#prev-page')?.addEventListener('click', () => {
+        if (currentPage > 1) { currentPage--; syncUrl(); load() }
+      })
+      content.querySelector('#next-page')?.addEventListener('click', () => {
+        if (currentPage < totalPages) { currentPage++; syncUrl(); load() }
+      })
       content.querySelector('#clear-source')?.addEventListener('click', () => {
         sourceFilter = ''
         currentPage = 1
@@ -526,23 +699,64 @@ export async function ListPage(): Promise<HTMLElement> {
         dismissChip('#has-interviews-chip')
         load()
       })
-
-      // Bulk actions
-      content.querySelector('#bulk-status-btn')?.addEventListener('click', async () => {
-        const status = (content.querySelector('#bulk-status-select') as HTMLSelectElement).value
-        const ids = [...selectedIds]
-        const result = await api.applications.bulkStatus(ids, status)
-        toast(t('list.bulk_done').replace('{count}', String(result.updated)), 'success')
-        toggleSelectMode(false)
+      content.querySelector('#clear-sent')?.addEventListener('click', () => {
+        sentFilter = false
+        currentPage = 1
+        syncUrl()
+        dismissChip('#sent-chip')
         load()
       })
-      content.querySelector('#bulk-delete-btn')?.addEventListener('click', async () => {
+      content.querySelector('#clear-period')?.addEventListener('click', () => {
+        periodFilter = ''
+        currentPage = 1
+        syncUrl()
+        dismissChip('#period-chip')
+        load()
+      })
+      content.querySelector('#clear-status')?.addEventListener('click', () => {
+        statusFilter = []
+        content.querySelector('#status-filter [data-multi-status]')?.remove()
+        const select = content.querySelector('#status-filter') as HTMLSelectElement | null
+        if (select) select.value = ''
+        currentPage = 1
+        syncUrl()
+        dismissChip('#status-chip')
+        load()
+      })
+
+      // Bulk actions
+      content.querySelector('#bulk-status-btn')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget as HTMLButtonElement
+        const status = (content.querySelector('#bulk-status-select') as HTMLSelectElement).value
+        const ids = [...selectedIds]
+        btn.disabled = true
+        try {
+          const result = await api.applications.bulkStatus(ids, status)
+          toast(t('list.bulk_done').replace('{count}', String(result.updated)), 'success')
+          toggleSelectMode(false)
+          load()
+        } catch {
+          // Keep the selection so the user can try again.
+          toast(t('form.error'), 'error')
+        } finally {
+          btn.disabled = false
+        }
+      })
+      content.querySelector('#bulk-delete-btn')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget as HTMLButtonElement
         const ids = [...selectedIds]
         if (!confirm(t('list.bulk_delete_confirm').replace('{count}', String(ids.length)))) return
-        const result = await api.applications.bulkDelete(ids)
-        toast(t('list.bulk_deleted').replace('{count}', String(result.deleted)), 'info')
-        toggleSelectMode(false)
-        load()
+        btn.disabled = true
+        try {
+          const result = await api.applications.bulkDelete(ids)
+          toast(t('list.bulk_deleted').replace('{count}', String(result.deleted)), 'info')
+          toggleSelectMode(false)
+          load()
+        } catch {
+          toast(t('form.error'), 'error')
+        } finally {
+          btn.disabled = false
+        }
       })
     } else {
       const el = appsContainer as HTMLElement
@@ -558,6 +772,8 @@ export async function ListPage(): Promise<HTMLElement> {
       const paginationEl = content.querySelector('#pagination')
       if (paginationEl) (paginationEl as HTMLElement).style.display = (viewMode === 'table' && resp.total_pages > 1) ? '' : 'none'
       await new Promise(r => setTimeout(r, 120))
+      // A newer load started during the fade: it owns the list now.
+      if (seq !== loadSeq) return
       el.innerHTML = viewMode === 'kanban' ? renderKanban(apps, resp.total) : renderTable(apps)
       el.classList.remove('content-swap')
       updateViewToggle()
