@@ -3,14 +3,19 @@ package handlers_test
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
+	_ "time/tzdata" // the time zone tests must not depend on the host's zoneinfo
 
 	"github.com/go-chi/chi/v5"
 
@@ -52,6 +57,7 @@ func newTestServer(t *testing.T) *testServer {
 	r.Put("/api/applications/{id}", h.UpdateApplication)
 	r.Put("/api/applications/{id}/snooze", h.SnoozeFollowUp)
 	r.Delete("/api/applications/{id}", h.DeleteApplication)
+	r.Get("/api/sources", h.ListSources)
 	r.Get("/api/applications/{id}/interviews", h.ListInterviews)
 	r.Post("/api/applications/{id}/interviews", h.CreateInterview)
 	r.Get("/api/interviews/{id}", h.GetInterview)
@@ -1610,8 +1616,8 @@ func TestStats_PeriodCohort(t *testing.T) {
 func TestStats_Weekly(t *testing.T) {
 	ts := newTestServer(t)
 
-	// Four applications created now (applied_at left nil -> created_at is the
-	// "sent" moment), so they all land in the current week.
+	// Four applications created now as Applied (applied_at is stamped with the
+	// creation time), so they all land in the current week.
 	a := createApp(t, ts, map[string]any{"company_name": "Alpha", "status": "Applied"})
 	b := createApp(t, ts, map[string]any{"company_name": "Bravo", "status": "Applied"})
 	createApp(t, ts, map[string]any{"company_name": "Charlie", "status": "Applied"})
@@ -1683,7 +1689,6 @@ func TestStats_UpcomingInterviews(t *testing.T) {
 		name     string
 		payload  map[string]any
 		upcoming bool
-		inPeriod bool
 	}{
 		{
 			name:     "two days ahead counts",
@@ -1699,13 +1704,11 @@ func TestStats_UpcomingInterviews(t *testing.T) {
 			name:     "already happened",
 			payload:  map[string]any{"round": 3, "type": "Technical", "scheduled_at": daysAgo(2)},
 			upcoming: false,
-			inPeriod: true,
 		},
 		{
 			name:     "unscheduled falls back to created_at and is never upcoming",
 			payload:  map[string]any{"round": 4, "type": "HR"},
 			upcoming: false,
-			inPeriod: true,
 		},
 		{
 			// Same horizon as round 1, but called off: not something to prepare for.
@@ -1714,16 +1717,16 @@ func TestStats_UpcomingInterviews(t *testing.T) {
 			upcoming: false,
 		},
 		{
-			// Cancelling only affects the upcoming count, not the period KPI:
-			// it still happened (or was going to) inside the window.
-			name:     "cancelled interview in the past still counts in the period KPI",
+			// A cancelled interview never took place: it is not upcoming, and it
+			// does not make an application count in the interviews KPI either
+			// (see TestStats_InterviewsKPI_CountsApplications).
+			name:     "cancelled interview in the past is not upcoming",
 			payload:  map[string]any{"round": 6, "type": "Video", "scheduled_at": daysAgo(3), "outcome": "Cancelled"},
 			upcoming: false,
-			inPeriod: true,
 		},
 	}
 
-	wantUpcoming, wantInPeriod := 0, 0
+	wantUpcoming := 0
 	for _, tc := range interviews {
 		w := ts.do(t, "POST", "/api/applications/"+app.ID+"/interviews", tc.payload)
 		if w.Code != http.StatusCreated {
@@ -1746,9 +1749,6 @@ func TestStats_UpcomingInterviews(t *testing.T) {
 		if tc.upcoming {
 			wantUpcoming++
 		}
-		if tc.inPeriod {
-			wantInPeriod++
-		}
 	}
 
 	stats := getStats(t, ts, "")
@@ -1757,7 +1757,6 @@ func TestStats_UpcomingInterviews(t *testing.T) {
 	}
 	// The period KPI counts applications that landed at least one interview,
 	// not interview rows: all six rounds belong to one application.
-	_ = wantInPeriod
 	assertFloat(t, "period.interviews.value", stats.Period.Interviews.Value, 1, 0)
 	assertPrev(t, "period.interviews", stats.Period.Interviews.Prev, 0)
 }
@@ -1992,9 +1991,10 @@ func TestStats_ActiveProcesses(t *testing.T) {
 	if p.NextInterview == nil || p.NextInterview.Round != 3 {
 		t.Errorf("next interview = %+v, want round 3 (cancelled round 4 skipped)", p.NextInterview)
 	}
-	if p.SilentDays != 0 {
-		// The application was just created and interviews just added.
-		t.Errorf("silent_days = %d, want 0", p.SilentDays)
+	if p.SilentDays != 1 {
+		// Silence runs from the last interview held (round 2, a day ago), not
+		// from the interviews being entered just now.
+		t.Errorf("silent_days = %d, want 1", p.SilentDays)
 	}
 	if stats.ActiveProcesses[1].CompanyName != "Screen" || stats.ActiveProcesses[1].LastInterview != nil {
 		t.Errorf("second process = %+v, want Screen with no interview", stats.ActiveProcesses[1])
@@ -2111,5 +2111,859 @@ func TestGetActivityByDay_IncludesInterviewsHeld(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("heatmap should count the interview held on %s: %+v", day, stats.ActivityHeatmap)
+	}
+}
+
+// --- Regression tests for the audit fixes ---
+
+// rawDB opens a second connection to the test database. Foreign keys are off
+// on it (SQLite's default), so it can plant what the API refuses to write:
+// orphans left by older versions, out-of-range legacy values, or a trigger
+// that makes one statement fail halfway through a request.
+func rawDB(t *testing.T, ts *testServer) *sql.DB {
+	t.Helper()
+	conn, err := sql.Open("sqlite", ts.dbPath)
+	if err != nil {
+		t.Fatalf("open raw connection: %v", err)
+	}
+	conn.SetMaxOpenConns(1)
+	t.Cleanup(func() { conn.Close() })
+	return conn
+}
+
+func rawExec(t *testing.T, ts *testServer, query string, args ...any) {
+	t.Helper()
+	if _, err := rawDB(t, ts).Exec(query, args...); err != nil {
+		t.Fatalf("raw exec %q: %v", query, err)
+	}
+}
+
+func rawCount(t *testing.T, ts *testServer, query string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := rawDB(t, ts).QueryRow(query, args...).Scan(&n); err != nil {
+		t.Fatalf("raw count %q: %v", query, err)
+	}
+	return n
+}
+
+func postInterview(t *testing.T, ts *testServer, appID string, body map[string]any) models.Interview {
+	t.Helper()
+	w := ts.do(t, "POST", "/api/applications/"+appID+"/interviews", body)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create interview: %d %s", w.Code, w.Body.String())
+	}
+	return decode[models.Interview](t, w)
+}
+
+func listTotal(t *testing.T, ts *testServer, query string) int {
+	t.Helper()
+	w := ts.do(t, "GET", "/api/applications?"+query, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /api/applications?%s: %d %s", query, w.Code, w.Body.String())
+	}
+	return decode[listResponse](t, w).Total
+}
+
+func importApps(t *testing.T, ts *testServer, apps ...map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+	return ts.do(t, "POST", "/api/import", map[string]any{"applications": apps})
+}
+
+func TestUpdateApplication_PartialBodyIsRejected(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Applied", "notes": "keep me", "salary": 42000})
+
+	w := ts.do(t, "PUT", "/api/applications/"+app.ID, map[string]any{"company_name": "X", "job_title": "Y"})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("partial PUT: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	got := getApp(t, ts, app.ID)
+	if got.Status != models.StatusApplied || got.ContractType != "CDI" || got.Notes == nil || *got.Notes != "keep me" {
+		t.Errorf("row changed by a rejected PUT: %+v", got)
+	}
+	for _, e := range got.TimelineEvents {
+		if e.EventType == "status_change" {
+			t.Errorf("rejected PUT wrote a timeline event: %+v", e)
+		}
+	}
+
+	// A PUT without a currency gets the same default as a create.
+	updated := putApp(t, ts, app, nil)
+	if updated.SalaryCurrency != "EUR" {
+		t.Errorf("salary_currency = %q, want EUR", updated.SalaryCurrency)
+	}
+}
+
+func TestUpdateApplication_ReturnsStoredRow(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Screening"})
+	if w := ts.do(t, "PUT", "/api/applications/"+app.ID+"/snooze", map[string]any{"until": "2099-01-01"}); w.Code != http.StatusOK {
+		t.Fatalf("snooze: %d", w.Code)
+	}
+
+	got := putApp(t, ts, app, map[string]any{"notes": "edited"})
+	if !got.CreatedAt.Equal(app.CreatedAt) {
+		t.Errorf("created_at = %v, want the stored %v", got.CreatedAt, app.CreatedAt)
+	}
+	if got.FollowUpSnoozedUntil == nil {
+		t.Error("follow_up_snoozed_until missing from the update response")
+	}
+	if got.Notes == nil || *got.Notes != "edited" {
+		t.Errorf("notes = %v, want edited", got.Notes)
+	}
+}
+
+func TestApplication_RangeValidation(t *testing.T) {
+	ts := newTestServer(t)
+	for name, extra := range map[string]map[string]any{
+		"confidence too high":   {"confidence": 5},
+		"confidence too low":    {"confidence": 0},
+		"negative salary":       {"salary": -5},
+		"zero contract months":  {"contract_duration": 0},
+		"negative contract len": {"contract_duration": -3},
+	} {
+		t.Run(name, func(t *testing.T) {
+			payload := map[string]any{"company_name": "Co", "job_title": "Dev"}
+			for k, v := range extra {
+				payload[k] = v
+			}
+			if w := ts.do(t, "POST", "/api/applications", payload); w.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestUpdateApplication_LegacyOutOfRangeValueStaysEditable(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Applied", "confidence": 3})
+	// Written by an older version that did not check the range.
+	rawExec(t, ts, `UPDATE applications SET confidence = 99 WHERE id = ?`, app.ID)
+
+	// The detail page sends the whole row back: the stored 99 must not lock it.
+	if w := ts.do(t, "PUT", "/api/applications/"+app.ID, map[string]any{
+		"company_name": "TestCo", "job_title": "Dev", "contract_type": "CDI", "work_mode": "Remote",
+		"status": "Screening", "confidence": 99,
+	}); w.Code != http.StatusOK {
+		t.Fatalf("unchanged legacy value: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	// A new invalid value is still refused.
+	if w := ts.do(t, "PUT", "/api/applications/"+app.ID, map[string]any{
+		"company_name": "TestCo", "job_title": "Dev", "contract_type": "CDI", "work_mode": "Remote",
+		"status": "Screening", "confidence": 7,
+	}); w.Code != http.StatusBadRequest {
+		t.Fatalf("new invalid value: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestInterview_DefaultsAndStoredResponses(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, nil)
+
+	iv := postInterview(t, ts, app.ID, map[string]any{})
+	if iv.Round != 1 || iv.Type != models.InterviewPhone {
+		t.Errorf("empty interview = round %d / %q, want 1 / Phone", iv.Round, iv.Type)
+	}
+	found := false
+	for _, e := range getApp(t, ts, app.ID).TimelineEvents {
+		if e.Description == "Interview round 1 (Phone) added" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("timeline should record the defaulted round and type")
+	}
+
+	w := ts.do(t, "PUT", "/api/interviews/"+iv.ID, map[string]any{"round": 2, "type": "Video", "outcome": "Passed"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("update interview: %d %s", w.Code, w.Body.String())
+	}
+	got := decode[models.Interview](t, w)
+	if got.ApplicationID != app.ID || got.CreatedAt.IsZero() || got.Round != 2 {
+		t.Errorf("update response is not the stored row: %+v", got)
+	}
+
+	w = ts.do(t, "POST", "/api/applications/"+app.ID+"/contacts", map[string]any{"name": "Alice"})
+	c := decode[models.Contact](t, w)
+	w = ts.do(t, "PUT", "/api/contacts/"+c.ID, map[string]any{"name": "Alice Martin"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("update contact: %d %s", w.Code, w.Body.String())
+	}
+	gotC := decode[models.Contact](t, w)
+	if gotC.ApplicationID != app.ID || gotC.CreatedAt.IsZero() || gotC.Name != "Alice Martin" {
+		t.Errorf("contact update response is not the stored row: %+v", gotC)
+	}
+}
+
+func TestChildren_UnknownApplication(t *testing.T) {
+	ts := newTestServer(t)
+
+	if w := ts.do(t, "POST", "/api/applications/does-not-exist/interviews", map[string]any{"round": 1, "type": "Phone", "scheduled_at": daysAhead(2)}); w.Code != http.StatusNotFound {
+		t.Errorf("interview on unknown application: expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := ts.do(t, "POST", "/api/applications/does-not-exist/contacts", map[string]any{"name": "Bob"}); w.Code != http.StatusNotFound {
+		t.Errorf("contact on unknown application: expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := ts.do(t, "GET", "/api/applications/does-not-exist/interviews", nil); w.Code != http.StatusNotFound {
+		t.Errorf("list interviews of unknown application: expected 404, got %d", w.Code)
+	}
+	if w := ts.do(t, "GET", "/api/applications/does-not-exist/contacts", nil); w.Code != http.StatusNotFound {
+		t.Errorf("list contacts of unknown application: expected 404, got %d", w.Code)
+	}
+	if got := getStats(t, ts, "").UpcomingInterviews; got != 0 {
+		t.Errorf("upcoming_interviews = %d, want 0", got)
+	}
+
+	app := createApp(t, ts, nil)
+	for _, path := range []string{"/interviews", "/contacts"} {
+		w := ts.do(t, "GET", "/api/applications/"+app.ID+path, nil)
+		if w.Code != http.StatusOK || w.Body.String() != "[]\n" {
+			t.Errorf("GET %s of an application without any: got %d %q, want 200 []", path, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestStoredTimesAreUTC(t *testing.T) {
+	ts := newTestServer(t)
+	want := time.Date(2025, time.February, 28, 22, 30, 0, 0, time.UTC)
+
+	app := createApp(t, ts, map[string]any{"status": "Applied", "applied_at": "2025-03-01T00:30:00+02:00"})
+	if got := getApp(t, ts, app.ID).AppliedAt; got == nil || !got.Equal(want) {
+		t.Errorf("created applied_at = %v, want %v", got, want)
+	}
+	if app.AppliedAt == nil || !app.AppliedAt.Equal(want) {
+		t.Errorf("create response applied_at = %v, want %v", app.AppliedAt, want)
+	}
+
+	w := importApps(t, ts, map[string]any{"id": "offset-import", "company_name": "Off", "job_title": "Set", "applied_at": "2025-03-01T00:30:00+02:00"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", w.Code, w.Body.String())
+	}
+	if got := getApp(t, ts, "offset-import").AppliedAt; got == nil || !got.Equal(want) {
+		t.Errorf("imported applied_at = %v, want %v", got, want)
+	}
+}
+
+func TestListApplications_PageOverflow(t *testing.T) {
+	ts := newTestServer(t)
+	createApp(t, ts, nil)
+	w := ts.do(t, "GET", "/api/applications?page=9223372036854775807&per_page=500", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	resp := decode[listResponse](t, w)
+	if resp.Page < 1 || len(resp.Data) != 0 {
+		t.Errorf("huge page: page=%d with %d rows, want a page >= 1 with no rows", resp.Page, len(resp.Data))
+	}
+}
+
+func TestListApplications_SortOrder(t *testing.T) {
+	ts := newTestServer(t)
+	for _, c := range []struct {
+		name       string
+		status     string
+		confidence any
+	}{
+		{"Zenika", "Rejected", 2},
+		{"leboncoin", "Wishlist", nil},
+		{"École 42", "NoReply", 4},
+		{"iAdvize", "Applied", 1},
+		{"Alpha", "Offer", nil},
+	} {
+		createApp(t, ts, map[string]any{"company_name": c.name, "status": c.status, "confidence": c.confidence})
+	}
+	names := func(query string) []string {
+		var out []string
+		for _, a := range decode[listResponse](t, ts.do(t, "GET", "/api/applications?"+query, nil)).Data {
+			out = append(out, a.CompanyName)
+		}
+		return out
+	}
+	check := func(query string, want ...string) {
+		t.Helper()
+		if got := names(query); strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("%s: got %v, want %v", query, got, want)
+		}
+	}
+	// Case and accents do not push a name to the end of the alphabet.
+	check("sort=company_name&dir=asc", "Alpha", "École 42", "iAdvize", "leboncoin", "Zenika")
+	// Pipeline order, not the English names' alphabetical order.
+	check("sort=status&dir=asc", "leboncoin", "iAdvize", "Alpha", "Zenika", "École 42")
+	// Applications without a value come last in both directions.
+	for dir, want := range map[string]string{"asc": "iAdvize|Zenika|École 42", "desc": "École 42|Zenika|iAdvize"} {
+		got := names("sort=confidence&dir=" + dir)
+		if len(got) != 5 || strings.Join(got[:3], "|") != want {
+			t.Errorf("sort=confidence&dir=%s: got %v, want %s then the two without a value", dir, got, want)
+		}
+	}
+}
+
+func TestSearchAndDuplicates_IgnoreCaseAccentsAndSpaces(t *testing.T) {
+	ts := newTestServer(t)
+	createApp(t, ts, map[string]any{"company_name": "Société Générale ", "job_title": "Dev"})
+	createApp(t, ts, map[string]any{"company_name": "École 42", "job_title": "Pédagogue", "source": " LinkedIn "})
+	createApp(t, ts, map[string]any{"company_name": "Other", "job_title": "Dev", "source": "LinkedIn"})
+
+	for _, q := range []string{"societe generale", "SOCIÉTÉ  GÉNÉRALE", "Société Générale", " société générale "} {
+		var results []map[string]any
+		json.NewDecoder(ts.do(t, "GET", "/api/applications/duplicates?company_name="+url.QueryEscape(q), nil).Body).Decode(&results)
+		if len(results) != 1 {
+			t.Errorf("duplicates for %q: got %d, want 1", q, len(results))
+		}
+	}
+	for _, q := range []string{"école", "ECOLE", "pedagogue"} {
+		if got := listTotal(t, ts, "search="+url.QueryEscape(q)); got != 1 {
+			t.Errorf("search %q: got %d, want 1", q, got)
+		}
+	}
+
+	var sources []string
+	json.NewDecoder(ts.do(t, "GET", "/api/sources", nil).Body).Decode(&sources)
+	if len(sources) != 1 || sources[0] != "LinkedIn" {
+		t.Errorf("sources = %q, want the one trimmed LinkedIn", sources)
+	}
+}
+
+func TestBulkUpdateStatus_SetsAppliedAtAndTimeline(t *testing.T) {
+	ts := newTestServer(t)
+	wish := createApp(t, ts, map[string]any{"company_name": "Wish", "status": "Wishlist"})
+	screening := createApp(t, ts, map[string]any{"company_name": "Back", "status": "Screening", "applied_at": "2025-01-15T00:00:00Z"})
+
+	w := ts.do(t, "PUT", "/api/applications/bulk/status", map[string]any{
+		"ids": []string{wish.ID, screening.ID, "unknown-id"}, "status": "Applied",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("bulk: %d %s", w.Code, w.Body.String())
+	}
+	if got := decode[map[string]int](t, w)["updated"]; got != 2 {
+		t.Errorf("updated = %d, want 2 (the unknown id is skipped)", got)
+	}
+	got := getApp(t, ts, wish.ID)
+	if got.AppliedAt == nil {
+		t.Error("bulk move to Applied should stamp applied_at, as the single update does")
+	}
+	found := false
+	for _, e := range got.TimelineEvents {
+		if e.Description == "Status changed from Wishlist to Applied" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("bulk move should write the status_change event")
+	}
+	if a := getApp(t, ts, screening.ID).AppliedAt; a == nil || a.Format("2006-01-02") != "2025-01-15" {
+		t.Errorf("existing applied_at must be kept, got %v", a)
+	}
+	if p := getStats(t, ts, "?period=30").Period; p.Sent.Value != 1 {
+		t.Errorf("period.sent = %v, want 1 (the bulk-applied Wish)", p.Sent.Value)
+	}
+}
+
+// The list sends the user's local calendar day, so the sent date does not
+// depend on the server clock around midnight.
+func TestBulkUpdateStatus_UsesClientAppliedDate(t *testing.T) {
+	ts := newTestServer(t)
+	wish := createApp(t, ts, map[string]any{"company_name": "Wish", "status": "Wishlist"})
+
+	w := ts.do(t, "PUT", "/api/applications/bulk/status", map[string]any{
+		"ids": []string{wish.ID}, "status": "Applied", "applied_at": "2026-03-14T00:00:00Z",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("bulk: %d %s", w.Code, w.Body.String())
+	}
+	if a := getApp(t, ts, wish.ID).AppliedAt; a == nil || !a.Equal(time.Date(2026, 3, 14, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("applied_at = %v, want the client's calendar day 2026-03-14", a)
+	}
+}
+
+func TestBulkActions_AreAllOrNothing(t *testing.T) {
+	ts := newTestServer(t)
+	a := createApp(t, ts, map[string]any{"company_name": "A", "status": "Applied"})
+	b := createApp(t, ts, map[string]any{"company_name": "B", "status": "Applied"})
+	// The second application's timeline insert fails: the first status
+	// change must be rolled back with it.
+	rawExec(t, ts, fmt.Sprintf(`CREATE TRIGGER boom_status BEFORE INSERT ON timeline_events
+		WHEN NEW.application_id = '%s' BEGIN SELECT RAISE(ABORT, 'boom'); END`, b.ID))
+
+	w := ts.do(t, "PUT", "/api/applications/bulk/status", map[string]any{"ids": []string{a.ID, b.ID}, "status": "Rejected"})
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("bulk status with a failing row: expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := getApp(t, ts, a.ID).Status; got != models.StatusApplied {
+		t.Errorf("first application status = %s, want Applied (rolled back)", got)
+	}
+
+	// The same goes for the single update: no status change without its event.
+	w = ts.do(t, "PUT", "/api/applications/"+b.ID, map[string]any{
+		"company_name": "B", "job_title": "Dev", "contract_type": "CDI", "work_mode": "Remote", "status": "Screening",
+	})
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("update with a failing event: expected 500, got %d", w.Code)
+	}
+	if got := getApp(t, ts, b.ID).Status; got != models.StatusApplied {
+		t.Errorf("status = %s, want Applied (rolled back with its event)", got)
+	}
+
+	rawExec(t, ts, fmt.Sprintf(`CREATE TRIGGER boom_delete BEFORE DELETE ON applications
+		WHEN OLD.id = '%s' BEGIN SELECT RAISE(ABORT, 'boom'); END`, b.ID))
+	w = ts.do(t, "DELETE", "/api/applications/bulk", map[string]any{"ids": []string{a.ID, b.ID}})
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("bulk delete with a failing row: expected 500, got %d", w.Code)
+	}
+	if w := ts.do(t, "GET", "/api/applications/"+a.ID, nil); w.Code != http.StatusOK {
+		t.Errorf("first application should survive a failed bulk delete, got %d", w.Code)
+	}
+}
+
+func TestMarkNoReply_SkipsApplicationsWithAnInterview(t *testing.T) {
+	ts := newTestServer(t)
+	// Any real interview, even undated and without outcome, is an answer.
+	withInterview := createApp(t, ts, map[string]any{"company_name": "Call", "status": "Applied", "applied_at": daysAgo(40)})
+	postInterview(t, ts, withInterview.ID, map[string]any{"round": 1, "type": "Phone"})
+	// A cancelled interview is not.
+	cancelledOnly := createApp(t, ts, map[string]any{"company_name": "Cancelled", "status": "Applied", "applied_at": daysAgo(40)})
+	postInterview(t, ts, cancelledOnly.ID, map[string]any{"round": 1, "type": "Phone", "scheduled_at": daysAhead(2), "outcome": "Cancelled"})
+
+	if n := markNoReply(t, ts, 30); n != 1 {
+		t.Fatalf("MarkNoReply returned %d, want 1", n)
+	}
+	if got := getApp(t, ts, withInterview.ID).Status; got != models.StatusApplied {
+		t.Errorf("application with an interview = %s, want Applied", got)
+	}
+	got := getApp(t, ts, cancelledOnly.ID)
+	if got.Status != models.StatusNoReply {
+		t.Errorf("application with only a cancelled interview = %s, want NoReply", got.Status)
+	}
+	// The job's own event is told apart from a manual change by its id.
+	for _, e := range got.TimelineEvents {
+		if e.Description == "Status changed from Applied to NoReply" && !strings.HasPrefix(e.ID, "auto-noreply-") {
+			t.Errorf("automatic event id = %q, want the auto-noreply- prefix", e.ID)
+		}
+	}
+}
+
+func TestActivity_HeatmapMatchesDayPanel(t *testing.T) {
+	ts := newTestServer(t)
+	day := time.Now().UTC().AddDate(0, 0, -10)
+	d := day.Format("2006-01-02")
+	at := func(hm string) string { return d + "T" + hm + ":00Z" }
+
+	w := importApps(t, ts, map[string]any{
+		"id": "act-app", "company_name": "ActCo", "job_title": "Dev", "status": "Interviewing",
+		"timeline_events": []map[string]any{
+			{"event_type": "created", "description": "Application created", "created_at": at("09:00")},
+			{"event_type": "status_change", "description": "Status changed from Applied to Interviewing", "created_at": at("10:00")},
+			// Nobody typed these two: the no-reply job and migration 006.
+			{"id": "auto-noreply-1", "event_type": "status_change", "description": "Status changed from Applied to NoReply", "created_at": at("11:00")},
+			{"id": "migration-006-act-app", "event_type": "status_change", "description": "Status changed from Withdrawn to Applied", "created_at": at("12:00")},
+		},
+		"interviews": []map[string]any{
+			{"round": 1, "type": "Phone", "scheduled_at": at("14:00")},
+			{"round": 2, "type": "Video", "scheduled_at": at("15:00"), "outcome": "Cancelled"},
+		},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", w.Code, w.Body.String())
+	}
+	// An orphan left by a delete made before foreign keys were enforced.
+	rawExec(t, ts, `INSERT INTO timeline_events (id, application_id, event_type, description, created_at)
+		VALUES ('orphan', 'gone', 'created', 'Application created', ?)`, d+" 13:00:00")
+
+	// Today: one application created through the API (one event, not two),
+	// and an interview later today that has not been held yet.
+	today := time.Now().UTC().Format("2006-01-02")
+	created := createApp(t, ts, map[string]any{"company_name": "Today"})
+	postInterview(t, ts, created.ID, map[string]any{"round": 1, "type": "HR", "scheduled_at": today + "T23:59:59Z"})
+
+	heat := map[string]int{}
+	for _, c := range getStats(t, ts, "").ActivityHeatmap {
+		heat[c.Date] = c.Count
+	}
+	for _, tc := range []struct {
+		day  string
+		want int
+	}{
+		{d, 3},     // created, status change, interview held
+		{today, 2}, // created, interview added
+	} {
+		items := decode[[]models.ActivityItem](t, ts.do(t, "GET", "/api/activity?date="+tc.day, nil))
+		if heat[tc.day] != tc.want || len(items) != tc.want {
+			t.Errorf("%s: heatmap %d, day panel %d items, want both %d: %+v", tc.day, heat[tc.day], len(items), tc.want, items)
+		}
+	}
+}
+
+func TestActivity_UsesTheViewersDays(t *testing.T) {
+	ts := newTestServer(t)
+	base := time.Now().UTC().AddDate(0, 0, -20)
+	d := base.Format("2006-01-02")
+	next := base.AddDate(0, 0, 1).Format("2006-01-02")
+	prev := base.AddDate(0, 0, -1).Format("2006-01-02")
+
+	w := importApps(t, ts, map[string]any{
+		"id": "tz-app", "company_name": "TzCo", "job_title": "Dev", "status": "Interviewing",
+		"timeline_events": []map[string]any{
+			{"event_type": "note", "description": "late evening", "created_at": d + "T23:30:00Z"},
+			{"event_type": "note", "description": "small hours", "created_at": next + "T01:00:00Z"},
+		},
+		// Interview times are the wall clock the user typed: this one is on d
+		// whatever the viewer's zone.
+		"interviews": []map[string]any{{"round": 1, "type": "Phone", "scheduled_at": d + "T23:30:00Z"}},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", w.Code, w.Body.String())
+	}
+
+	for _, tc := range []struct {
+		tz   string
+		want map[string]int
+	}{
+		{"", map[string]int{d: 2, next: 1}},                   // UTC
+		{"America/Toronto", map[string]int{d: 3}},             // 19:30 and 21:00 (or 18:30 and 20:00) on d
+		{"Europe/Paris", map[string]int{d: 1, next: 2}},       // 00:30 and 02:00 (or 01:30 and 03:00) the next day
+		{"Not/AZone", map[string]int{d: 2, next: 1}},          // unknown zone falls back to UTC
+		{"Local", map[string]int{d: 2, next: 1}},              // the server's zone is never used
+		{"../../etc/passwd", map[string]int{d: 2, next: 1}},   // rejected by LoadLocation
+		{"Pacific/Kiritimati", map[string]int{d: 1, next: 2}}, // UTC+14
+	} {
+		q := ""
+		if tc.tz != "" {
+			q = "&tz=" + tc.tz
+		}
+		heat := map[string]int{}
+		for _, c := range getStats(t, ts, "?period=30"+q).ActivityHeatmap {
+			heat[c.Date] = c.Count
+		}
+		for _, day := range []string{prev, d, next} {
+			items := decode[[]models.ActivityItem](t, ts.do(t, "GET", "/api/activity?date="+day+q, nil))
+			if heat[day] != tc.want[day] || len(items) != tc.want[day] {
+				t.Errorf("tz=%q %s: heatmap %d, day panel %d, want %d", tc.tz, day, heat[day], len(items), tc.want[day])
+			}
+		}
+	}
+}
+
+func TestStats_OrphansAreIgnored(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Applied"})
+	putApp(t, ts, app, map[string]any{"status": "Screening"})
+	postInterview(t, ts, app.ID, map[string]any{"round": 1, "type": "Phone", "scheduled_at": daysAhead(2)})
+	// Deleted the way older versions did, without the cascade.
+	rawExec(t, ts, `DELETE FROM applications WHERE id = ?`, app.ID)
+
+	stats := getStats(t, ts, "")
+	if stats.Total != 0 || stats.UpcomingInterviews != 0 || len(stats.ActivityHeatmap) != 0 {
+		t.Errorf("orphans still counted: total=%d upcoming=%d heatmap=%v", stats.Total, stats.UpcomingInterviews, stats.ActivityHeatmap)
+	}
+	if replies := stats.Weekly[len(stats.Weekly)-1].Replies; replies != 0 {
+		t.Errorf("weekly replies = %d, want 0", replies)
+	}
+}
+
+func TestStats_UpcomingIgnoresClosedApplications(t *testing.T) {
+	ts := newTestServer(t)
+	for _, st := range []string{"Rejected", "Wishlist", "NoReply", "Accepted", "Interviewing"} {
+		app := createApp(t, ts, map[string]any{"company_name": st, "status": st})
+		postInterview(t, ts, app.ID, map[string]any{"round": 1, "type": "Phone", "scheduled_at": daysAhead(2)})
+	}
+	if got := getStats(t, ts, "").UpcomingInterviews; got != 1 {
+		t.Errorf("upcoming_interviews = %d, want 1 (the Interviewing one)", got)
+	}
+}
+
+func TestStats_InterviewCountsAsReply(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"status": "Applied", "applied_at": daysAgo(10)})
+	postInterview(t, ts, app.ID, map[string]any{"round": 1, "type": "Phone", "scheduled_at": daysAgo(1)})
+	createApp(t, ts, map[string]any{"status": "Applied", "applied_at": daysAgo(10)})
+
+	p := getStats(t, ts, "?period=30").Period
+	want := models.FunnelStats{Sent: 2, Responded: 1, Interviewing: 1}
+	if p.Funnel != want {
+		t.Errorf("funnel = %+v, want %+v (an interview is an answer)", p.Funnel, want)
+	}
+	if got := listTotal(t, ts, "has_reply=1"); got != 1 {
+		t.Errorf("has_reply list = %d, want 1", got)
+	}
+}
+
+// Every KPI tile of the dashboard links to the list: the list total must be
+// the number on the tile, for every period.
+func TestStats_TileTotalsMatchList(t *testing.T) {
+	ts := newTestServer(t)
+	mk := func(status string, applied any, interviews ...map[string]any) {
+		fields := map[string]any{"status": status}
+		if applied != nil {
+			fields["applied_at"] = applied
+		}
+		app := createApp(t, ts, fields)
+		for _, iv := range interviews {
+			postInterview(t, ts, app.ID, iv)
+		}
+	}
+	held := map[string]any{"round": 1, "type": "Phone", "scheduled_at": daysAgo(3)}
+	cancelled := map[string]any{"round": 1, "type": "Phone", "scheduled_at": daysAgo(3), "outcome": "Cancelled"}
+	for _, days := range []int{10, 50, 200, 400} {
+		mk("Applied", daysAgo(days))
+		mk("Applied", daysAgo(days), held)
+		mk("Applied", daysAgo(days), cancelled)
+		mk("NoReply", daysAgo(days))
+		mk("NoReply", daysAgo(days), held)
+		mk("Screening", daysAgo(days))
+		mk("Interviewing", daysAgo(days), held)
+		mk("Offer", daysAgo(days))
+		mk("Accepted", daysAgo(days), held)
+		mk("Rejected", daysAgo(days), held)
+		mk("Wishlist", daysAgo(days), held)
+	}
+	mk("Screening", nil)        // sent "now": no applied_at, falls back to created_at
+	mk("Applied", daysAhead(3)) // dated in the future by mistake
+	mk("Wishlist", nil, held)   // never sent
+	// Either side of the 30-day edge, an hour away from it.
+	edge := time.Now().UTC().AddDate(0, 0, -30)
+	mk("Applied", edge.Add(time.Hour).Format(time.RFC3339), held)
+	mk("Rejected", edge.Add(-time.Hour).Format(time.RFC3339))
+
+	for _, period := range []string{"30", "90", "365", "all"} {
+		p := getStats(t, ts, "?period="+period).Period
+		suffix := "&period=" + period
+		if period == "all" {
+			suffix = ""
+		}
+		for _, tile := range []struct {
+			name   string
+			value  float64
+			params string
+		}{
+			{"sent", p.Sent.Value, "sent=1"},
+			{"responded", p.Responded.Value, "has_reply=1&sent=1"},
+			{"interviews", p.Interviews.Value, "has_interviews=1&sent=1"},
+			{"offers", p.Offers.Value, "status=Offer,Accepted"},
+			{"rejected", p.Rejected.Value, "status=Rejected"},
+			{"no_reply", p.NoReply.Value, "status=NoReply"},
+		} {
+			if tile.value == 0 {
+				t.Errorf("period %s: tile %s is 0, the fixture should fill it", period, tile.name)
+			}
+			if got := listTotal(t, ts, tile.params+suffix); float64(got) != tile.value {
+				t.Errorf("period %s: tile %s = %v but the list (%s) has %d", period, tile.name, tile.value, tile.params+suffix, got)
+			}
+		}
+		if float64(p.Funnel.Responded) != p.Responded.Value || float64(p.Funnel.Sent) != p.Sent.Value {
+			t.Errorf("period %s: funnel %+v disagrees with the tiles", period, p.Funnel)
+		}
+		if p.Funnel.Interviewing > p.Funnel.Responded || p.Funnel.Responded > p.Funnel.Sent {
+			t.Errorf("period %s: funnel is not monotonic: %+v", period, p.Funnel)
+		}
+	}
+
+	if w := ts.do(t, "GET", "/api/applications?status=Offer,Bogus", nil); w.Code != http.StatusBadRequest {
+		t.Errorf("unknown status in the list: expected 400, got %d", w.Code)
+	}
+}
+
+func TestStats_FollowUpsIgnoreCancelledInterviews(t *testing.T) {
+	ts := newTestServer(t)
+	onlyCancelled := createApp(t, ts, map[string]any{"company_name": "Cancelled", "status": "Interviewing"})
+	postInterview(t, ts, onlyCancelled.ID, map[string]any{"round": 1, "type": "Phone", "scheduled_at": daysAgo(15), "outcome": "Cancelled"})
+	stale := createApp(t, ts, map[string]any{"company_name": "Stale", "status": "Interviewing"})
+	postInterview(t, ts, stale.ID, map[string]any{"round": 1, "type": "Phone", "scheduled_at": daysAgo(20)})
+	postInterview(t, ts, stale.ID, map[string]any{"round": 2, "type": "Video", "scheduled_at": daysAgo(5), "outcome": "Cancelled"})
+
+	fu := getStats(t, ts, "").FollowUps
+	if len(fu) != 1 || fu[0].ID != stale.ID {
+		t.Errorf("follow-ups = %+v, want only Stale", fu)
+	}
+}
+
+func TestStats_ActiveProcesses_SilenceIsTheCompanys(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"company_name": "Quiet", "status": "Screening", "applied_at": daysAgo(20)})
+	// Things the user does on their side are not news from the company.
+	putApp(t, ts, app, map[string]any{"notes": "called them"})
+	ts.do(t, "PUT", "/api/applications/"+app.ID+"/snooze", map[string]any{"until": "2099-01-01"})
+	ts.do(t, "POST", "/api/applications/"+app.ID+"/contacts", map[string]any{"name": "Alice"})
+	// An interview without a date has not been held as far as anyone knows.
+	postInterview(t, ts, app.ID, map[string]any{"round": 1, "type": "HR"})
+
+	ap := getStats(t, ts, "").ActiveProcesses
+	if len(ap) != 1 {
+		t.Fatalf("expected 1 active process, got %d", len(ap))
+	}
+	if ap[0].SilentDays != 20 {
+		t.Errorf("silent_days = %d, want 20", ap[0].SilentDays)
+	}
+	if ap[0].LastInterview != nil || ap[0].Rounds != 1 {
+		t.Errorf("undated interview: last=%+v rounds=%d, want no last interview and 1 round", ap[0].LastInterview, ap[0].Rounds)
+	}
+
+	// Moving to Interviewing is news: the company answered.
+	putApp(t, ts, app, map[string]any{"status": "Interviewing"})
+	if got := getStats(t, ts, "").ActiveProcesses[0].SilentDays; got != 0 {
+		t.Errorf("silent_days after a reply = %d, want 0", got)
+	}
+}
+
+var generatedID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+func TestImport_MalformedIDsAreReplaced(t *testing.T) {
+	ts := newTestServer(t)
+	evil := `x" onmouseover="alert(1)`
+	w := importApps(t, ts, map[string]any{
+		"id": evil, "company_name": "EvilCo", "job_title": "Dev",
+		"interviews":      []map[string]any{{"id": `<img src=x>`, "round": 1, "type": "Phone"}},
+		"contacts":        []map[string]any{{"id": `a"b`, "name": "Eve"}},
+		"timeline_events": []map[string]any{{"id": "migration-006-0b1c", "event_type": "status_change", "description": "Status changed from Withdrawn to Applied"}},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", w.Code, w.Body.String())
+	}
+	if res := decode[map[string]int](t, w); res["imported"] != 1 {
+		t.Fatalf("import result = %v, want 1 imported (never skipped for its id)", res)
+	}
+	list := decode[listResponse](t, ts.do(t, "GET", "/api/applications", nil))
+	if len(list.Data) != 1 || !generatedID.MatchString(list.Data[0].ID) {
+		t.Fatalf("stored id = %+v, want a clean one", list.Data)
+	}
+	app := getApp(t, ts, list.Data[0].ID)
+	if len(app.Interviews) != 1 || !generatedID.MatchString(app.Interviews[0].ID) ||
+		len(app.Contacts) != 1 || !generatedID.MatchString(app.Contacts[0].ID) {
+		t.Errorf("children should follow the application under clean ids: %+v %+v", app.Interviews, app.Contacts)
+	}
+	if len(app.TimelineEvents) != 1 || app.TimelineEvents[0].ID != "migration-006-0b1c" {
+		t.Errorf("a well-formed event id must be kept: %+v", app.TimelineEvents)
+	}
+}
+
+func TestImport_ChildIDAlreadyTakenGetsANewOne(t *testing.T) {
+	ts := newTestServer(t)
+	importApps(t, ts, map[string]any{"id": "app-a", "company_name": "A", "job_title": "Dev",
+		"interviews": []map[string]any{{"id": "iv-1", "round": 1, "type": "Phone", "notes": "A's"}}})
+	w := importApps(t, ts, map[string]any{"id": "app-b", "company_name": "B", "job_title": "Dev",
+		"interviews": []map[string]any{{"id": "iv-1", "round": 1, "type": "Video", "notes": "B's"}}})
+	if w.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", w.Code, w.Body.String())
+	}
+	a, b := getApp(t, ts, "app-a"), getApp(t, ts, "app-b")
+	if len(a.Interviews) != 1 || a.Interviews[0].ID != "iv-1" || *a.Interviews[0].Notes != "A's" {
+		t.Errorf("A's interview must be untouched: %+v", a.Interviews)
+	}
+	if len(b.Interviews) != 1 || b.Interviews[0].ID == "iv-1" || *b.Interviews[0].Notes != "B's" {
+		t.Errorf("B's interview must be kept under a new id: %+v", b.Interviews)
+	}
+}
+
+func TestImport_RestoreAfterDeleteReplacesOrphans(t *testing.T) {
+	ts := newTestServer(t)
+	app := createApp(t, ts, map[string]any{"company_name": "Restored"})
+	iv := postInterview(t, ts, app.ID, map[string]any{"round": 1, "type": "Phone", "notes": "backup-version"})
+	var backup map[string]any
+	json.NewDecoder(ts.do(t, "GET", "/api/export", nil).Body).Decode(&backup)
+
+	ts.do(t, "PUT", "/api/interviews/"+iv.ID, map[string]any{"round": 1, "type": "Phone", "notes": "post-backup-edit"})
+	ts.do(t, "POST", "/api/applications/"+app.ID+"/contacts", map[string]any{"name": "Added after backup"})
+	// Deleted the way older versions did, leaving the children behind.
+	rawExec(t, ts, `DELETE FROM applications WHERE id = ?`, app.ID)
+
+	w := ts.do(t, "POST", "/api/import", backup)
+	if w.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", w.Code, w.Body.String())
+	}
+	got := getApp(t, ts, app.ID)
+	if len(got.Interviews) != 1 || got.Interviews[0].Notes == nil || *got.Interviews[0].Notes != "backup-version" {
+		t.Errorf("interviews = %+v, want only the backup's version", got.Interviews)
+	}
+	if len(got.Contacts) != 0 {
+		t.Errorf("contacts = %+v, want none (the backup had none)", got.Contacts)
+	}
+}
+
+func TestImport_IsAllOrNothing(t *testing.T) {
+	ts := newTestServer(t)
+	rawExec(t, ts, `CREATE TRIGGER boom_import BEFORE INSERT ON contacts
+		WHEN NEW.name = 'boom' BEGIN SELECT RAISE(ABORT, 'boom'); END`)
+
+	w := importApps(t, ts,
+		map[string]any{"company_name": "First", "job_title": "Dev",
+			"interviews": []map[string]any{{"round": 1, "type": "Phone"}},
+			"contacts":   []map[string]any{{"name": "Fine"}}},
+		map[string]any{"company_name": "Second", "job_title": "Dev", "contacts": []map[string]any{{"name": "boom"}}},
+		map[string]any{"company_name": "Third", "job_title": "Dev"},
+	)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("import with a failing row: expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+	for _, table := range []string{"applications", "interviews", "contacts", "timeline_events"} {
+		if n := rawCount(t, ts, "SELECT COUNT(*) FROM "+table); n != 0 {
+			t.Errorf("%s has %d rows after a failed import, want 0", table, n)
+		}
+	}
+}
+
+func TestImport_KeepsLegacyValues(t *testing.T) {
+	ts := newTestServer(t)
+	w := importApps(t, ts, map[string]any{
+		"id": "legacy", "company_name": "Legacy", "job_title": "Dev",
+		"confidence": 9, "rating": 7, "salary": -5, "contract_duration": 0,
+		"interviews": []map[string]any{{"round": 0, "type": ""}, {"round": -2, "type": "Video", "duration_minutes": -3}},
+	})
+	if w.Code != http.StatusOK || decode[map[string]int](t, w)["imported"] != 1 {
+		t.Fatalf("legacy application must be imported, got %d", w.Code)
+	}
+	got := getApp(t, ts, "legacy")
+	if got.Confidence != nil || got.Rating != nil || got.Salary != nil || got.ContractDuration != nil {
+		t.Errorf("out-of-range values should be imported empty: %+v", got)
+	}
+	if len(got.Interviews) != 2 {
+		t.Fatalf("both interviews must be kept, got %d", len(got.Interviews))
+	}
+	for _, iv := range got.Interviews {
+		if iv.Round != 1 || iv.Type == "" || iv.DurationMinutes != nil {
+			t.Errorf("legacy interview not normalised: %+v", iv)
+		}
+	}
+}
+
+func TestImport_LargerThanTheOldTenMegabyteLimit(t *testing.T) {
+	ts := newTestServer(t)
+	desc := strings.Repeat("x", 1<<20)
+	var apps []map[string]any
+	for i := 0; i < 12; i++ {
+		apps = append(apps, map[string]any{"company_name": fmt.Sprintf("Big %d", i), "job_title": "Dev", "job_description": desc})
+	}
+	w := importApps(t, ts, apps...)
+	if w.Code != http.StatusOK {
+		t.Fatalf("12 MB import: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if res := decode[map[string]int](t, w); res["imported"] != 12 {
+		t.Errorf("imported = %d, want 12", res["imported"])
+	}
+}
+
+func TestExport_BatchedChildrenStayWithTheirApplication(t *testing.T) {
+	ts := newTestServer(t)
+	a := createApp(t, ts, map[string]any{"company_name": "A"})
+	b := createApp(t, ts, map[string]any{"company_name": "B"})
+	postInterview(t, ts, a.ID, map[string]any{"round": 2, "type": "Video"})
+	postInterview(t, ts, a.ID, map[string]any{"round": 1, "type": "Phone"})
+	ts.do(t, "POST", "/api/applications/"+b.ID+"/contacts", map[string]any{"name": "Bob"})
+
+	var export struct {
+		Applications []models.Application `json:"applications"`
+	}
+	json.NewDecoder(ts.do(t, "GET", "/api/export", nil).Body).Decode(&export)
+	byName := map[string]models.Application{}
+	for _, app := range export.Applications {
+		byName[app.CompanyName] = app
+	}
+	if ivs := byName["A"].Interviews; len(ivs) != 2 || ivs[0].Round != 1 || ivs[1].Round != 2 {
+		t.Errorf("A's interviews = %+v, want rounds 1 then 2", ivs)
+	}
+	if len(byName["A"].Contacts) != 0 || len(byName["B"].Contacts) != 1 || len(byName["B"].Interviews) != 0 {
+		t.Errorf("children attached to the wrong application: %+v", export.Applications)
+	}
+	if len(byName["A"].TimelineEvents) != 3 || len(byName["B"].TimelineEvents) != 2 {
+		t.Errorf("timeline events: A %d, B %d, want 3 and 2", len(byName["A"].TimelineEvents), len(byName["B"].TimelineEvents))
 	}
 }

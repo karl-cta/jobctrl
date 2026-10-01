@@ -15,6 +15,11 @@ import (
 // It follows the "Status changed from X to Y" shape the stats code parses.
 const noReplyDesc = "Status changed from Applied to NoReply"
 
+// autoEventPrefix starts the id of every timeline event the app writes on its
+// own, without the user doing anything. The activity heatmap leaves these out
+// (userEventSQL); the timeline and the recent-activity feed still show them.
+const autoEventPrefix = "auto-noreply-"
+
 type noReplyCandidate struct {
 	id     string
 	sentAt time.Time
@@ -22,6 +27,8 @@ type noReplyCandidate struct {
 
 // MarkNoReply moves every stale "Applied" application to "NoReply" and returns
 // the number of transitions. days <= 0 disables the feature and returns 0.
+// An application with a real (non-cancelled) interview is never stale: the
+// company did answer, whatever the status says.
 //
 // The countdown starts at the LATEST of COALESCE(applied_at, created_at) and
 // the most recent "... to Applied" timeline event, so re-applying (or moving
@@ -81,7 +88,7 @@ func (h *Handler) MarkNoReply(ctx context.Context, now time.Time, days int) (int
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO timeline_events (id, application_id, event_type, description, created_at)
 			 VALUES (?,?,?,?,?)`,
-			uuid.New().String(), id, "status_change", noReplyDesc, stamp); err != nil {
+			autoEventPrefix+uuid.New().String(), id, "status_change", noReplyDesc, stamp); err != nil {
 			return n, err
 		}
 		n++
@@ -92,11 +99,13 @@ func (h *Handler) MarkNoReply(ctx context.Context, now time.Time, days int) (int
 	return n, nil
 }
 
-// noReplyCandidates returns every "Applied" application with its sent date
-// (applied_at, falling back to created_at).
+// noReplyCandidates returns every "Applied" application without a real
+// interview, with its sent date (applied_at, falling back to created_at). The
+// interview test is the one the has_interviews filter and the stats use.
 func (h *Handler) noReplyCandidates(ctx context.Context) ([]noReplyCandidate, error) {
 	rows, err := h.db.QueryContext(ctx,
-		`SELECT id, COALESCE(applied_at, created_at) FROM applications WHERE status = ?`,
+		`SELECT a.id, COALESCE(a.applied_at, a.created_at) FROM applications a
+		 WHERE a.status = ? AND NOT `+hasInterviewSQL,
 		models.StatusApplied)
 	if err != nil {
 		return nil, err

@@ -19,6 +19,13 @@ const (
 	timelineWeeks     = 12
 )
 
+// statsNow is the "now" the period windows are cut at, by GetStats and by
+// the list's ?period= filter alike. Stored times have whole seconds, so a
+// whole-second now makes the SQL text comparison and the Go one agree.
+func statsNow() time.Time {
+	return time.Now().UTC().Truncate(time.Second)
+}
+
 // parsePeriod turns the ?period= query value into a number of days (0 = all).
 func parsePeriod(raw string) int {
 	switch strings.TrimSpace(raw) {
@@ -136,10 +143,12 @@ func (h *Handler) loadSentApps(ctx context.Context) []sentApp {
 }
 
 // loadReplyEvents returns status_change events whose target status counts as
-// a reply from the company.
+// a reply from the company. Events of a deleted application (orphans from
+// before foreign keys were enforced) are left out.
 func (h *Handler) loadReplyEvents(ctx context.Context) []replyEvent {
 	rows, err := h.db.QueryContext(ctx, `SELECT application_id, description, created_at
-		FROM timeline_events WHERE event_type = 'status_change'`)
+		FROM timeline_events WHERE event_type = 'status_change'
+		  AND application_id IN (SELECT id FROM applications)`)
 	if err != nil {
 		log.Printf("GetStats replyEvents: %v", err)
 		return nil
@@ -169,15 +178,18 @@ func (h *Handler) loadReplyEvents(ctx context.Context) []replyEvent {
 
 type interviewTime struct {
 	appID     string
+	appStatus string
 	at        time.Time
 	scheduled bool
 	cancelled bool
 }
 
 // loadInterviewTimes returns the scheduled time of every interview
-// (falling back to its creation time when unscheduled).
+// (falling back to its creation time when unscheduled), with the status of
+// its application. Orphans of a deleted application are left out.
 func (h *Handler) loadInterviewTimes(ctx context.Context) []interviewTime {
-	rows, err := h.db.QueryContext(ctx, `SELECT application_id, scheduled_at, created_at, COALESCE(outcome, '') FROM interviews`)
+	rows, err := h.db.QueryContext(ctx, `SELECT i.application_id, a.status, i.scheduled_at, i.created_at, COALESCE(i.outcome, '')
+		FROM interviews i JOIN applications a ON a.id = i.application_id`)
 	if err != nil {
 		log.Printf("GetStats interviewTimes: %v", err)
 		return nil
@@ -185,17 +197,21 @@ func (h *Handler) loadInterviewTimes(ctx context.Context) []interviewTime {
 	defer rows.Close()
 	var out []interviewTime
 	for rows.Next() {
-		var appID, outcome string
+		var appID, appStatus, outcome string
 		var rawSched, rawCreated any
-		if err := rows.Scan(&appID, &rawSched, &rawCreated, &outcome); err != nil {
+		if err := rows.Scan(&appID, &appStatus, &rawSched, &rawCreated, &outcome); err != nil {
+			log.Printf("GetStats interviewTimes scan: %v", err)
 			continue
 		}
-		cancelled := outcome == string(models.OutcomeCancelled)
+		iv := interviewTime{appID: appID, appStatus: appStatus, cancelled: outcome == string(models.OutcomeCancelled)}
 		if t, ok := scanTime(rawSched); ok {
-			out = append(out, interviewTime{appID: appID, at: t, scheduled: true, cancelled: cancelled})
+			iv.at, iv.scheduled = t, true
 		} else if t, ok := scanTime(rawCreated); ok {
-			out = append(out, interviewTime{appID: appID, at: t, cancelled: cancelled})
+			iv.at = t
+		} else {
+			continue
 		}
+		out = append(out, iv)
 	}
 	return out
 }
@@ -223,22 +239,27 @@ func floatPtr(v float64) *float64 { return &v }
 func computePeriodStats(now time.Time, days int, apps []sentApp, interviews []interviewTime) models.PeriodStats {
 	ps := models.PeriodStats{Days: days}
 
+	// The current window is [start, end). The list's ?period= filter cuts the
+	// same window, so a KPI tile and the list it links to always agree.
 	var start, prevStart time.Time
+	end := now.Add(time.Second)
 	hasPrev := days > 0
 	if days > 0 {
 		start = now.AddDate(0, 0, -days)
 		prevStart = start.AddDate(0, 0, -days)
 	} else {
-		// All time: start at the earliest sent application (or now when empty).
+		// All time: every sent application, from the earliest one (or a day
+		// back when there is none) to the latest, even one dated in the future.
 		start = now
 		for _, a := range apps {
+			if !isSentStatus(a.status) {
+				continue
+			}
 			if a.sentAt.Before(start) {
 				start = a.sentAt
 			}
-		}
-		for _, iv := range interviews {
-			if iv.at.Before(start) {
-				start = iv.at
+			if !a.sentAt.Before(end) {
+				end = a.sentAt.Add(time.Second)
 			}
 		}
 		if start.Equal(now) {
@@ -246,7 +267,7 @@ func computePeriodStats(now time.Time, days int, apps []sentApp, interviews []in
 		}
 	}
 
-	inCurrent := func(t time.Time) bool { return !t.Before(start) && t.Before(now.Add(time.Second)) }
+	inCurrent := func(t time.Time) bool { return !t.Before(start) && t.Before(end) }
 	inPrev := func(t time.Time) bool { return hasPrev && !t.Before(prevStart) && t.Before(start) }
 
 	// Applications that got at least one real interview, whatever the round.
@@ -266,9 +287,14 @@ func computePeriodStats(now time.Time, days int, apps []sentApp, interviews []in
 	offerSeries := make([]float64, sparkBuckets)
 	interviewSeries := make([]float64, sparkBuckets)
 
+	// The company replied when the status says so, or when the application
+	// landed a real interview whatever its status: an interview is an answer.
+	// The list's has_reply filter applies the same rule.
+	replied := func(a sentApp) bool { return isRespondedStatus(a.status) || withInterview[a.id] }
+
 	tally := func(c *counters, a sentApp) {
 		c.sent++
-		if isRespondedStatus(a.status) {
+		if replied(a) {
 			c.responded++
 		}
 		// "Reached the interview stage" = had at least one interview, or sits
@@ -307,9 +333,9 @@ func computePeriodStats(now time.Time, days int, apps []sentApp, interviews []in
 		switch {
 		case inCurrent(a.sentAt):
 			tally(&cur, a)
-			if b := bucketIndex(a.sentAt, start, now.Add(time.Second), sparkBuckets); b >= 0 {
+			if b := bucketIndex(a.sentAt, start, end, sparkBuckets); b >= 0 {
 				sentSeries[b]++
-				if isRespondedStatus(a.status) {
+				if replied(a) {
 					respondedSeries[b]++
 				}
 				if withInterview[a.id] {
@@ -419,11 +445,17 @@ func computeWeekly(now time.Time, apps []sentApp, replies []replyEvent) []models
 }
 
 // countUpcomingInterviews counts interviews scheduled within the next 7 days,
-// ignoring cancelled ones.
+// ignoring cancelled ones and those of an application no longer in progress
+// (never sent, rejected, accepted or given up on).
 func countUpcomingInterviews(now time.Time, interviews []interviewTime) int {
 	end := now.AddDate(0, 0, 7)
 	n := 0
 	for _, iv := range interviews {
+		switch models.ApplicationStatus(iv.appStatus) {
+		case models.StatusApplied, models.StatusScreening, models.StatusInterviewing, models.StatusOffer:
+		default:
+			continue
+		}
 		if iv.scheduled && !iv.cancelled && !iv.at.Before(now) && iv.at.Before(end) {
 			n++
 		}
