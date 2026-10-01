@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -11,24 +12,57 @@ import (
 	"sort"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// dsnParams are applied by the modernc driver on every new connection.
+//
+// Foreign keys are ON, so deleting an application cascades to its children.
+// Any future migration that rebuilds a parent table (DROP TABLE, or the
+// create/copy/drop/rename table swap) must run with foreign keys OFF, or the
+// implicit DELETE of the old table fires ON DELETE CASCADE and wipes every
+// interview, contact and timeline event. `PRAGMA foreign_keys` is a no-op
+// inside a transaction, so this needs a change in runMigrations, not just a
+// line in the migration file.
+const dsnParams = "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)"
+
 func Open(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path+"?_journal=WAL&_foreign_keys=on&_timeout=5000")
+	db, err := sql.Open("sqlite", path+dsnParams)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	db.SetMaxOpenConns(1)
 
-	if err := runMigrations(db, path); err != nil {
+	// sql.Open is lazy: connect now so a bad path fails here with a clear
+	// message instead of an opaque driver error from the first migration.
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, openError(path, err)
+	}
+
+	if err := runMigrations(db, path, migrationsFS); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrations: %w", err)
 	}
 	return db, nil
+}
+
+// openError names the database path and, for the errors SQLite reports when
+// the directory is missing or not writable (which modernc words as "out of
+// memory (14)"), says what to check.
+func openError(path string, err error) error {
+	var se *sqlite.Error
+	if errors.As(err, &se) {
+		switch se.Code() & 0xff {
+		case sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_READONLY:
+			return fmt.Errorf("cannot open database %s: check that the directory %s exists and is writable (%w)", path, filepath.Dir(path), err)
+		}
+	}
+	return fmt.Errorf("cannot open database %s: %w", path, err)
 }
 
 // backupBeforeMigration copies the database next to itself before a schema
@@ -49,7 +83,7 @@ func backupBeforeMigration(db *sql.DB, path string) (string, error) {
 	return backup, nil
 }
 
-func runMigrations(db *sql.DB, path string) error {
+func runMigrations(db *sql.DB, path string, migrations fs.FS) error {
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		version INTEGER PRIMARY KEY,
 		applied_at DATETIME NOT NULL DEFAULT (datetime('now'))
@@ -57,7 +91,7 @@ func runMigrations(db *sql.DB, path string) error {
 		return err
 	}
 
-	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	entries, err := fs.ReadDir(migrations, "migrations")
 	if err != nil {
 		return err
 	}
@@ -105,18 +139,37 @@ func runMigrations(db *sql.DB, path string) error {
 		name := files[i]
 		version := i + 1
 
-		content, err := migrationsFS.ReadFile("migrations/" + name)
+		content, err := fs.ReadFile(migrations, "migrations/"+name)
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}
-
-		if _, err := db.Exec(string(content)); err != nil {
-			return fmt.Errorf("apply migration %s: %w", name, err)
+		if err := applyMigration(db, name, version, string(content)); err != nil {
+			return err
 		}
+	}
+	return nil
+}
 
-		if _, err := db.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, version); err != nil {
-			return fmt.Errorf("record migration %s: %w", name, err)
-		}
+// applyMigration runs one migration script and records its version in a
+// single transaction, so a crash or a failing statement leaves neither a
+// half-applied schema nor a version marked as done. SQLite DDL is
+// transactional; migration files must not contain their own BEGIN/COMMIT.
+// With one open connection, only tx may be used until it ends.
+func applyMigration(db *sql.DB, name string, version int, script string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin migration %s: %w", name, err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(script); err != nil {
+		return fmt.Errorf("apply migration %s: %w", name, err)
+	}
+	if _, err := tx.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, version); err != nil {
+		return fmt.Errorf("record migration %s: %w", name, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit migration %s: %w", name, err)
 	}
 	return nil
 }
