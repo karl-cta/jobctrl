@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 - 2026-10-02
 
 Your data is safe across this upgrade: the database is snapshotted before the one new migration runs. That migration removes rows that earlier versions left behind when you deleted an application (its interviews, contacts and timeline events, which were no longer visible anywhere). See "Upgrading" in the README.
 
@@ -32,6 +32,7 @@ Your data is safe across this upgrade: the database is snapshotted before the on
 - The status filter and search are kept in the URL and survive going back, switching language or theme.
 - Duplicate detection, search and A-Z sort ignore accents and case.
 - Applications with an interview are no longer moved to "No reply".
+- The French interface consistently uses "tu".
 
 ### API
 - `GET /api/applications` accepts `sent=1`, `period=30|90|365|all` and a comma-separated `status`.
@@ -39,7 +40,7 @@ Your data is safe across this upgrade: the database is snapshotted before the on
 - `PUT /api/applications/bulk/status` accepts an optional `applied_at`.
 - Unknown `/api/*` routes answer 404 JSON; creating or listing interviews or contacts of an unknown application answers 404; updates return the stored row.
 
-## 1.1.0 — 2026-09-22
+## 1.1.0 - 2026-09-22
 
 Your data is safe across this upgrade: the app snapshots the database next to itself before applying its one migration, and the migration only remaps a removed status while keeping a visible trace in each affected timeline. See "Upgrading" in the README.
 
