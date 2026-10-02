@@ -20,7 +20,7 @@ Your data is safe across this upgrade: the database is snapshotted before the on
 
 ### Dashboard
 - Every indicator opens a list that contains exactly the number shown, for the selected period.
-- The activity heatmap and its day details use your local days instead of UTC days; creations are no longer counted twice, and automatic "No reply" moves are not counted as activity.
+- The activity heatmap and its day details use your local days instead of UTC days; creations are no longer counted twice, automatic "No reply" moves are not counted as activity, and one unusually busy day no longer fades all the others.
 - An application with an interview counts as a reply in the journey.
 - Loading errors show a retry instead of an empty dashboard; switching period quickly no longer shows stale numbers.
 

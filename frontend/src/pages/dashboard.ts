@@ -255,6 +255,15 @@ function timelineChart(weekly: WeeklyPoint[]): string {
   `
 }
 
+/** Linear-interpolated percentile of an ascending list, 0 when it is empty. */
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0
+  const rank = p * (sorted.length - 1)
+  const lo = Math.floor(rank)
+  const hi = Math.ceil(rank)
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (rank - lo)
+}
+
 function heatmapChart(days: ActivityDay[]): string {
   // Build a 26-week × 7-day grid ending today. Locale-independent: 7 rows (Mon-Sun), 26 cols.
   const WEEKS = 26
@@ -268,7 +277,12 @@ function heatmapChart(days: ActivityDay[]): string {
   const byDate = new Map<string, number>()
   for (const d of days) byDate.set(d.date, d.count)
 
-  const max = Math.max(1, ...days.map(d => d.count))
+  // Scale on the 90th percentile of active days rather than the busiest one,
+  // so a single unusual day (a batch of automatic "no reply" moves, an import)
+  // does not fade every other day to the lightest shade. Days above it get the
+  // top level.
+  const active = days.map(d => d.count).filter(c => c > 0).sort((a, b) => a - b)
+  const max = Math.max(1, percentile(active, 0.9))
 
   const level = (c: number): number => {
     if (c === 0) return 0
@@ -292,7 +306,7 @@ function heatmapChart(days: ActivityDay[]): string {
       const iso = localDayKey(d)
       const c = byDate.get(iso) ?? 0
       const lvl = level(c)
-      const label = `${longDay(iso)} · ${c} ${c === 1 ? t('dashboard.heatmap_event_one') : t('dashboard.heatmap_event_other')}`
+      const label = `${longDay(iso)} · ${c} ${tp('dashboard.heatmap_event', c)}`
       cells += `<i data-l="${lvl}" data-day="${iso}" role="button" tabindex="${iso === todayKey ? '0' : '-1'}" title="${esc(label)}" aria-label="${esc(label)}"></i>`
     }
   }
@@ -1198,7 +1212,7 @@ export async function DashboardPage(): Promise<HTMLElement> {
       dayPanel.removeAttribute('aria-busy')
       shown = iso
 
-      const noun = items.length === 1 ? t('dashboard.heatmap_event_one') : t('dashboard.heatmap_event_other')
+      const noun = tp('dashboard.heatmap_event', items.length)
       dayPanel.innerHTML = `
         <div class="heatmap-day-head">
           <span>${esc(longDay(iso))} · ${items.length} ${esc(noun)}</span>
