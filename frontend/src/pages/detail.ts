@@ -458,19 +458,49 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   statusWrapper.appendChild(statusBtn)
   statusWrapper.appendChild(statusDropdown)
 
-  // Rating stars
+  // Interest: five stars, editable in place like the status and the confidence.
+  // Clicking the current level clears it.
   const ratingEl = document.createElement('div')
-  ratingEl.className = 'flex items-center gap-0.5'
-  if (app.rating) {
-    for (let i = 1; i <= 5; i++) {
-      const star = document.createElement('span')
-      star.className = i <= app.rating ? 'text-amber-400' : 'text-surface-3'
-      star.setAttribute('aria-hidden', 'true')
-      star.innerHTML = icons.star
-      ratingEl.appendChild(star)
-    }
-    ratingEl.setAttribute('aria-label', `${app.rating}/5`)
+  ratingEl.className = 'flex items-center -ml-0.5'
+  ratingEl.setAttribute('role', 'radiogroup')
+  ratingEl.setAttribute('aria-label', t('form.rating'))
+  const renderRating = (preview = 0) => {
+    const level = preview || app.rating || 0
+    ratingEl.querySelectorAll<HTMLElement>('[data-star]').forEach(star => {
+      const n = Number(star.dataset.star)
+      star.classList.toggle('text-amber-400', n <= level)
+      star.classList.toggle('text-surface-3', n > level)
+      star.setAttribute('aria-checked', String(n === app.rating))
+    })
   }
+  for (let n = 1; n <= 5; n++) {
+    const star = document.createElement('button')
+    star.type = 'button'
+    star.dataset.star = String(n)
+    star.className = 'p-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
+    star.setAttribute('role', 'radio')
+    star.setAttribute('aria-label', `${n}/5 · ${t('form.rating_' + n)}`)
+    star.title = t('form.rating_' + n)
+    star.innerHTML = icons.star
+    star.addEventListener('mouseenter', () => renderRating(n))
+    star.addEventListener('click', async () => {
+      const previous = app.rating
+      const next = n === app.rating ? undefined : n
+      app.rating = next
+      renderRating()
+      try {
+        const updated = await api.applications.update(id, { ...app, rating: next })
+        syncApp(updated)
+      } catch {
+        app.rating = previous
+        renderRating()
+        toast(t('form.error'), 'error')
+      }
+    })
+    ratingEl.appendChild(star)
+  }
+  ratingEl.addEventListener('mouseleave', () => renderRating())
+  renderRating()
 
   // — Top bar: back + actions
   const topBar = document.createElement('div')
@@ -505,27 +535,23 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     4: 'text-teal-600 dark:text-teal-400',
   }
 
-  const metaRow = document.createElement('div')
-  metaRow.className = 'flex items-center gap-5 flex-wrap'
-  metaRow.appendChild(statusWrapper)
-  if (app.rating) {
-    const ratingGroup = document.createElement('div')
-    ratingGroup.className = 'flex items-center gap-2'
-    const ratingLabel = document.createElement('span')
-    ratingLabel.className = 'text-sm text-muted'
-    ratingLabel.textContent = t('form.rating')
-    ratingGroup.appendChild(ratingLabel)
-    ratingGroup.appendChild(ratingEl)
-    metaRow.appendChild(ratingGroup)
+  // Status, interest and confidence open the properties grid below, in the same
+  // label-above-value form as the other fields.
+  const propCell = (label: string, control: HTMLElement): HTMLElement => {
+    const cell = document.createElement('div')
+    cell.className = 'min-w-0'
+    const labelEl = document.createElement('span')
+    labelEl.className = 'block text-sm text-muted mb-1'
+    labelEl.textContent = label
+    cell.append(labelEl, control)
+    return cell
   }
+  const propCells: HTMLElement[] = [propCell(t('form.status'), statusWrapper)]
+  propCells.push(propCell(t('form.rating'), ratingEl))
   // Confidence picker (always show, even if not set)
   {
     const confWrapper = document.createElement('div')
-    confWrapper.className = 'flex items-center gap-2 relative'
-    const confLabel = document.createElement('span')
-    confLabel.className = 'text-sm text-muted'
-    confLabel.textContent = t('form.confidence')
-    confWrapper.appendChild(confLabel)
+    confWrapper.className = 'relative'
 
     const confBtn = document.createElement('button')
     const currentConf = (app.confidence && app.confidence >= 1 && app.confidence <= 4) ? app.confidence : 0
@@ -536,7 +562,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         confBtn.setAttribute('aria-label', t('detail.confidence_label').replace('{level}', t('form.confidence_' + level)))
       } else {
         confBtn.className = 'text-sm text-muted cursor-pointer hover:text-primary transition-colors'
-        confBtn.textContent = '---'
+        confBtn.textContent = t('detail.confidence_none')
         confBtn.setAttribute('aria-label', t('detail.confidence_unset'))
       }
     }
@@ -629,9 +655,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       if (!confWrapper.contains(e.target as Node)) closeConf()
     }, { capture: true })
     confWrapper.appendChild(confDrop)
-    metaRow.appendChild(confWrapper)
+    propCells.push(propCell(t('form.confidence'), confWrapper))
   }
-  header.appendChild(metaRow)
   content.appendChild(header)
 
   // Metadata: clean typographic row, no boxes. Rebuilt after a status change, which can
@@ -662,9 +687,12 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     // safeHostname returns plain text: it is escaped below along with every other value.
     if (app.job_url && sanitizeUrl(app.job_url)) details.push({ label: t('detail.job_link'), value: safeHostname(app.job_url), href: sanitizeUrl(app.job_url) })
 
-    const colCount = Math.min(details.length, 7)
-    detailsRow.className = `grid grid-cols-2 sm:grid-cols-3 ${LG_COLS[colCount] ?? ''} gap-y-5 gap-x-5 py-6 border-t border-b border-border/50`
+    const colCount = Math.min(propCells.length + details.length, 5)
+    // relative z-10: the status and confidence menus open over the tabs below.
+    detailsRow.className = `relative z-10 grid grid-cols-2 sm:grid-cols-3 ${LG_COLS[colCount] ?? ''} gap-y-5 gap-x-5 py-6 border-t border-b border-border/50`
     detailsRow.innerHTML = ''
+    // The property cells keep their menus and listeners: they are moved, not rebuilt.
+    detailsRow.append(...propCells)
     details.forEach(d => {
       const item = document.createElement('div')
       item.className = 'min-w-0'
@@ -783,7 +811,11 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const interviewsPanel = document.createElement('div')
   interviewsPanel.className = 'p-6 space-y-4'
 
+  // Set once the sidebar exists: every interview or contact change refreshes it.
+  let onListsChanged = () => {}
+
   const renderInterviews = (list: Interview[]) => {
+    onListsChanged()
     interviewsPanel.innerHTML = ''
     const addBtn = document.createElement('button')
     addBtn.className = 'btn-ghost text-sm gap-1.5 mb-4'
@@ -910,6 +942,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   contactsPanel.className = 'p-6 space-y-4'
 
   const renderContacts = (list: Contact[]) => {
+    onListsChanged()
     contactsPanel.innerHTML = ''
     const addBtn = document.createElement('button')
     addBtn.className = 'btn-ghost text-sm gap-1.5 mb-4'
@@ -1094,7 +1127,71 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   tabCard.appendChild(tabs.el)
 
   const sidebar = document.createElement('div')
-  sidebar.className = 'lg:w-64 shrink-0 space-y-4'
+  sidebar.className = 'lg:w-72 shrink-0 space-y-4'
+
+  const showTab = (id: string) => {
+    const btn = tabs.el.querySelector<HTMLElement>(`[data-tab="${id}"]`)
+    btn?.click()
+    btn?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+
+  // Next interview: scheduled_at is floating wall-clock time, so "now" is compared in
+  // the same frame (the local clock read as UTC). Cancelled ones are skipped.
+  const nextCard = document.createElement('div')
+  nextCard.className = 'card space-y-2'
+  const renderNextInterview = () => {
+    const d = new Date()
+    const now = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes())
+    const next = interviews
+      .filter(iv => iv.scheduled_at && iv.outcome !== 'Cancelled' && new Date(iv.scheduled_at).getTime() >= now)
+      .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime())[0]
+    nextCard.hidden = !next
+    if (!next) return
+    const when = new Date(next.scheduled_at!).toLocaleString(dateFmt, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
+    nextCard.innerHTML = `
+      <h3 class="text-sm font-semibold text-primary">${t('detail.next_interview')}</h3>
+      <p class="text-sm text-primary">${esc(when)}</p>
+      <p class="text-sm text-muted">${esc(interviewTypeLabel(next.type))} · ${t('detail.round')} ${next.round}${next.duration_minutes ? ` · ${next.duration_minutes} min` : ''}</p>
+      ${next.interviewer_name ? `<p class="text-sm text-muted">${esc(next.interviewer_name)}${next.interviewer_role ? ` · ${esc(next.interviewer_role)}` : ''}</p>` : ''}
+      <button type="button" data-show="interviews" class="text-sm text-accent hover:text-accent-hover font-medium transition-colors">${t('detail.see_interviews')}</button>
+    `
+  }
+
+  const contactsCard = document.createElement('div')
+  contactsCard.className = 'card space-y-3'
+  const renderContactsCard = () => {
+    contactsCard.hidden = contacts.length === 0
+    if (!contacts.length) return
+    contactsCard.innerHTML = `
+      <h3 class="text-sm font-semibold text-primary">${t('detail.tab_contacts')}</h3>
+      ${contacts.map(c => {
+        const mailto = c.email ? mailtoHref(c.email) : ''
+        const linkedin = c.linkedin ? sanitizeUrl(c.linkedin) : ''
+        return `
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-primary truncate">${esc(c.name)}</p>
+            ${c.role ? `<p class="text-sm text-muted truncate">${esc(c.role)}</p>` : ''}
+            <div class="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+              ${mailto ? `<a href="${esc(mailto)}" class="text-sm text-accent hover:text-accent-hover transition-colors truncate max-w-full">${esc(c.email)}</a>` : ''}
+              ${c.phone ? `<span class="text-sm text-muted">${esc(c.phone)}</span>` : ''}
+              ${linkedin ? `<a href="${esc(linkedin)}" target="_blank" rel="noopener noreferrer" class="text-sm text-accent hover:text-accent-hover transition-colors">LinkedIn</a>` : ''}
+            </div>
+          </div>`
+      }).join('')}
+      <button type="button" data-show="contacts" class="text-sm text-accent hover:text-accent-hover font-medium transition-colors">${t('detail.manage_contacts')}</button>
+    `
+  }
+
+  sidebar.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-show]')
+    if (btn) showTab(btn.dataset.show!)
+  })
+  const renderSidebar = () => {
+    renderNextInterview()
+    renderContactsCard()
+    sidebar.hidden = ![...sidebar.children].some(c => !(c as HTMLElement).hidden)
+  }
+  sidebar.append(nextCard, contactsCard)
 
   if (app.company_website || app.company_industry || app.company_size || app.company_location) {
     const companyCard = document.createElement('div')
@@ -1131,7 +1228,9 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   }
 
   layout.appendChild(tabCard)
-  if (sidebar.children.length) layout.appendChild(sidebar)
+  layout.appendChild(sidebar)
+  onListsChanged = renderSidebar
+  renderSidebar()
   content.appendChild(layout)
 
   topBar.querySelector('#delete-btn')?.addEventListener('click', () => {
