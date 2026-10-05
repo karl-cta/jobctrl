@@ -84,7 +84,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       </div>` : ''}
 
       <div class="card space-y-4">
-        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.company')}</h2>
+        <h2 class="text-base font-semibold text-primary">${t('form.company')}</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label for="f-company-name" class="label">${t('form.company_name')} *</label>
@@ -110,7 +110,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       </div>
 
       <div class="card space-y-4">
-        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.position')}</h2>
+        <h2 class="text-base font-semibold text-primary">${t('form.position')}</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label for="f-job-title" class="label">${t('form.job_title')} *</label>
@@ -156,7 +156,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       </div>
 
       <div class="card space-y-4">
-        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.salary_status')}</h2>
+        <h2 class="text-base font-semibold text-primary">${t('form.salary_status')}</h2>
         <div class="grid grid-cols-1 xs:grid-cols-2 gap-4">
           <div>
             <label for="f-salary" id="salary-label" class="label">${esc(salaryLabel(initialCurrency))}</label>
@@ -214,7 +214,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
       </div>
 
       <div class="card space-y-4">
-        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.notes_section')}</h2>
+        <h2 class="text-base font-semibold text-primary">${t('form.notes_section')}</h2>
         <div>
           <label for="f-notes" class="label">${t('form.notes')}</label>
           <textarea id="f-notes" name="notes" class="input h-40 resize-y" placeholder="${t('form.notes_placeholder')}">${v('notes')}</textarea>

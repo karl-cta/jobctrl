@@ -487,13 +487,13 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   // — Title block
   const titleGroup = document.createElement('div')
   titleGroup.innerHTML = `
-    <h1 class="text-3xl font-bold text-primary tracking-tighter">${
+    <h1 class="text-2xl font-bold text-primary tracking-tight">${
       app.company_website && domainFromUrl(app.company_website)
         ? `<img src="${esc(faviconUrl(domainFromUrl(app.company_website)!, 64))}" alt="" class="inline-block w-7 h-7 rounded -mt-1 mr-2" loading="lazy" data-hide-on-error />`
         : ''
     }${esc(app.company_name)}</h1>
-    <p class="text-lg text-muted mt-1">${esc(app.job_title)}</p>
-    ${app.location ? `<p class="text-muted/60 text-sm flex items-center gap-1.5 mt-2"><span aria-hidden="true">${icons.pin}</span> ${esc(app.location)}</p>` : ''}
+    <p class="text-base text-muted mt-1">${esc(app.job_title)}</p>
+    ${app.location ? `<p class="text-muted text-sm flex items-center gap-1.5 mt-2"><span aria-hidden="true">${icons.pin}</span> ${esc(app.location)}</p>` : ''}
   `
   header.appendChild(titleGroup)
 
@@ -512,7 +512,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     const ratingGroup = document.createElement('div')
     ratingGroup.className = 'flex items-center gap-2'
     const ratingLabel = document.createElement('span')
-    ratingLabel.className = 'text-xs text-muted/60 uppercase tracking-wider'
+    ratingLabel.className = 'text-sm text-muted'
     ratingLabel.textContent = t('form.rating')
     ratingGroup.appendChild(ratingLabel)
     ratingGroup.appendChild(ratingEl)
@@ -523,7 +523,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     const confWrapper = document.createElement('div')
     confWrapper.className = 'flex items-center gap-2 relative'
     const confLabel = document.createElement('span')
-    confLabel.className = 'text-xs text-muted/60 uppercase tracking-wider'
+    confLabel.className = 'text-sm text-muted'
     confLabel.textContent = t('form.confidence')
     confWrapper.appendChild(confLabel)
 
@@ -535,7 +535,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         confBtn.textContent = t('form.confidence_' + level)
         confBtn.setAttribute('aria-label', t('detail.confidence_label').replace('{level}', t('form.confidence_' + level)))
       } else {
-        confBtn.className = 'text-sm text-muted/40 cursor-pointer hover:text-muted transition-colors'
+        confBtn.className = 'text-sm text-muted cursor-pointer hover:text-primary transition-colors'
         confBtn.textContent = '---'
         confBtn.setAttribute('aria-label', t('detail.confidence_unset'))
       }
@@ -670,9 +670,9 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       item.className = 'min-w-0'
       const icon = d.iconHtml || ''
       item.innerHTML = d.href
-        ? `<span class="block text-xs text-muted/60 uppercase tracking-wider font-medium mb-1">${esc(d.label)}</span>
+        ? `<span class="block text-sm text-muted mb-1">${esc(d.label)}</span>
            <a href="${esc(d.href)}" target="_blank" rel="noopener noreferrer" class="text-sm text-accent hover:text-accent-hover font-medium transition-colors inline-flex items-center gap-1 max-w-full truncate">${esc(d.value)}</a>`
-        : `<span class="block text-xs text-muted/60 uppercase tracking-wider font-medium mb-1">${esc(d.label)}</span>
+        : `<span class="block text-sm text-muted mb-1">${esc(d.label)}</span>
            <span class="flex items-center gap-2 text-sm text-primary font-medium truncate">${icon}<span class="truncate">${esc(d.value)}</span></span>`
       detailsRow.appendChild(item)
     })
@@ -817,7 +817,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
     if (!list.length) {
       const empty = document.createElement('p')
-      empty.className = 'text-sm text-muted/60'
+      empty.className = 'text-sm text-muted'
       empty.textContent = t('detail.no_interviews')
       interviewsPanel.appendChild(empty)
       return
@@ -841,7 +841,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             </div>
             ${iv.scheduled_at ? `<p class="text-xs text-muted mt-1 tabular-nums">${new Date(iv.scheduled_at).toLocaleString(dateFmt, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}${iv.duration_minutes ? ` \u00b7 ${iv.duration_minutes} min` : ''}</p>` : ''}
             ${iv.interviewer_name ? `<p class="text-xs text-muted">${esc(iv.interviewer_name)}${iv.interviewer_role ? ` \u00b7 ${esc(iv.interviewer_role)}` : ''}</p>` : ''}
-            ${iv.notes ? `<p class="text-xs text-muted/70 mt-2 line-clamp-2">${esc(iv.notes)}</p>` : ''}
+            ${iv.notes ? `<p class="text-xs text-muted mt-2 line-clamp-2">${esc(iv.notes)}</p>` : ''}
           </div>
           <div class="flex gap-1 shrink-0">
             <button class="btn-ghost p-1.5 min-w-[44px] min-h-[44px]" data-edit-iv="${esc(iv.id)}" aria-label="${t('detail.edit')}">${icons.edit}</button>
@@ -943,7 +943,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
     if (!list.length) {
       const empty = document.createElement('p')
-      empty.className = 'text-sm text-muted/60'
+      empty.className = 'text-sm text-muted'
       empty.textContent = t('detail.no_contacts')
       contactsPanel.appendChild(empty)
       return
@@ -1037,7 +1037,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const renderTimeline = () => {
     timelinePanel.innerHTML = ''
     if (!app.timeline_events?.length) {
-      timelinePanel.innerHTML = `<p class="text-sm text-muted/60">${t('detail.no_timeline')}</p>`
+      timelinePanel.innerHTML = `<p class="text-sm text-muted">${t('detail.no_timeline')}</p>`
       return
     }
     const list = document.createElement('div')
@@ -1052,8 +1052,8 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       row.innerHTML = `
         <div class="absolute left-0 top-2 -translate-x-1/2 w-2.5 h-2.5 rounded-full ${dotColors[e.event_type] || 'bg-accent'} ring-2 ring-surface-1 shrink-0"></div>
         <div class="min-w-0">
-          <p class="text-sm text-primary/80">${esc(translateTimelineEvent(e.event_type, e.description))}</p>
-          <p class="text-xs text-muted/60 mt-0.5 tabular-nums">${new Date(e.created_at).toLocaleString(dateFmt)}</p>
+          <p class="text-sm text-primary">${esc(translateTimelineEvent(e.event_type, e.description))}</p>
+          <p class="text-xs text-muted mt-0.5 tabular-nums">${new Date(e.created_at).toLocaleString(dateFmt)}</p>
         </div>
       `
       list.appendChild(row)
@@ -1099,12 +1099,12 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   if (app.company_website || app.company_industry || app.company_size || app.company_location) {
     const companyCard = document.createElement('div')
     companyCard.className = 'card space-y-3'
-    companyCard.innerHTML = `<h3 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('detail.company_info')}</h3>`
+    companyCard.innerHTML = `<h3 class="text-sm font-semibold text-primary">${t('detail.company_info')}</h3>`
 
     if (app.company_website && sanitizeUrl(app.company_website)) {
       const row = document.createElement('div')
       row.innerHTML = `
-        <p class="text-xs text-muted mb-0.5 font-medium">${t('form.company_website')}</p>
+        <p class="text-sm text-muted mb-0.5">${t('form.company_website')}</p>
         <a href="${esc(sanitizeUrl(app.company_website))}" target="_blank" rel="noopener noreferrer"
            class="text-sm text-accent hover:text-accent-hover flex items-center gap-1.5 transition-colors font-medium">
           ${icons.globe} ${esc(safeHostname(app.company_website))}
@@ -1114,17 +1114,17 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     }
     if (app.company_industry) {
       const row = document.createElement('div')
-      row.innerHTML = `<p class="text-xs text-muted mb-0.5 font-medium">${t('form.company_industry')}</p><p class="text-sm text-primary">${esc(app.company_industry)}</p>`
+      row.innerHTML = `<p class="text-sm text-muted mb-0.5">${t('form.company_industry')}</p><p class="text-sm text-primary">${esc(app.company_industry)}</p>`
       companyCard.appendChild(row)
     }
     if (app.company_size) {
       const row = document.createElement('div')
-      row.innerHTML = `<p class="text-xs text-muted mb-0.5 font-medium">${t('form.company_size')}</p><p class="text-sm text-primary">${esc(app.company_size)}</p>`
+      row.innerHTML = `<p class="text-sm text-muted mb-0.5">${t('form.company_size')}</p><p class="text-sm text-primary">${esc(app.company_size)}</p>`
       companyCard.appendChild(row)
     }
     if (app.company_location) {
       const row = document.createElement('div')
-      row.innerHTML = `<p class="text-xs text-muted mb-0.5 font-medium">${t('form.company_location')}</p><p class="text-sm text-primary">${esc(app.company_location)}</p>`
+      row.innerHTML = `<p class="text-sm text-muted mb-0.5">${t('form.company_location')}</p><p class="text-sm text-primary">${esc(app.company_location)}</p>`
       companyCard.appendChild(row)
     }
     sidebar.appendChild(companyCard)

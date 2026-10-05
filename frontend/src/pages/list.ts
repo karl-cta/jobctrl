@@ -40,6 +40,9 @@ const CONF_FILL: Record<number, string> = {
 /** `?period=` values the list understands; "all time" is the absence of the param. */
 const LIST_PERIODS = ['30', '90', '365']
 
+/** Dot between the details of a list card. */
+const META_SEP = '<span class="text-muted" aria-hidden="true">·</span>'
+
 /** Decorative star: the rating is spelled out in an sr-only span next to it. */
 const STAR = icons.star.replace('<svg ', '<svg aria-hidden="true" ')
 
@@ -60,7 +63,7 @@ function companyFavicon(app: Application, cls = 'w-5 h-5'): string {
 
 function confidenceMeter(level: number): string {
   return `<span class="inline-flex gap-1 items-center" role="img" aria-label="${t('form.confidence')}: ${level}/4" title="${t('form.confidence_' + level)}">
-    <span class="text-xs text-muted/60">${t('form.confidence')}</span>
+    <span class="text-sm text-muted">${t('form.confidence')}</span>
     <span class="inline-flex gap-px items-center">${
     [1,2,3,4].map(n =>
       `<span class="w-1.5 h-3 rounded-sm ${n <= level ? (CONF_FILL[level] || 'bg-muted') : 'bg-surface-3/50'}"></span>`
@@ -163,14 +166,14 @@ export async function ListPage(): Promise<HTMLElement> {
     if (hasActiveFilters()) return `
       <div class="text-center py-24">
         <div class="text-muted/15 mb-6 flex justify-center">${icons.search}</div>
-        <p class="text-primary text-lg font-semibold mb-2">${t('list.empty_filtered')}</p>
+        <p class="text-primary text-base font-semibold mb-2">${t('list.empty_filtered')}</p>
         <p class="text-muted text-sm">${t('list.empty_filtered_hint')}</p>
       </div>
     `
     return `
       <div class="text-center py-24">
         <div class="text-muted/15 mb-6 flex justify-center">${icons.briefcaseLg}</div>
-        <p class="text-primary text-lg font-semibold mb-2">${t('list.empty')}</p>
+        <p class="text-primary text-base font-semibold mb-2">${t('list.empty')}</p>
         <p class="text-muted text-sm mb-8">${t('list.empty_hint')}</p>
         <a href="/applications/new" data-link class="btn-primary gap-1.5">${icons.plus} ${t('list.add_first')}</a>
       </div>
@@ -182,7 +185,7 @@ export async function ListPage(): Promise<HTMLElement> {
     content.innerHTML = `
       <h1 class="text-2xl font-bold text-primary tracking-tight">${t('list.title')}</h1>
       <div class="text-center py-24" role="alert">
-        <p class="text-primary text-lg font-semibold mb-2">${t('list.load_error')}</p>
+        <p class="text-primary text-base font-semibold mb-2">${t('list.load_error')}</p>
         <p class="text-muted text-sm mb-8">${t('common.load_error_hint')}</p>
         <button type="button" id="list-retry" class="btn-primary">${t('common.retry')}</button>
       </div>
@@ -209,12 +212,14 @@ export async function ListPage(): Promise<HTMLElement> {
               <span class="font-semibold text-primary block break-words sm:truncate">${companyFavicon(app, 'w-5 h-5 sm:w-6 sm:h-6 inline-block -mt-0.5 mr-1.5')}${esc(app.company_name)}</span>
               <span class="text-muted text-sm block break-words sm:truncate">${esc(app.job_title)}</span>
             </a>
-            <div class="flex items-center gap-2.5 flex-wrap">
-              <span class="text-xs font-semibold uppercase tracking-wide ${STATUS_TEXT[app.status] || 'text-muted'}">${esc(statusLabel(app.status as ApplicationStatus))}</span>
-              ${app.confidence ? confidenceMeter(app.confidence) : ''}
-              ${app.location ? `<span class="text-xs text-muted flex items-center gap-1"><span aria-hidden="true" class="opacity-60">${icons.pin}</span> ${esc(app.location)}</span>` : ''}
-              ${app.salary ? `<span class="text-xs text-muted tabular-nums font-medium">${esc(formatSalary(app.salary, app.salary_currency))}</span>` : ''}
-              ${app.applied_at ? `<span class="text-xs text-muted/60 tabular-nums">${appliedDate(app.applied_at)}</span>` : ''}
+            <div class="flex items-center gap-2 flex-wrap">
+              ${[
+                `<span class="text-sm font-semibold ${STATUS_TEXT[app.status] || 'text-muted'}">${esc(statusLabel(app.status as ApplicationStatus))}</span>`,
+                app.confidence ? confidenceMeter(app.confidence) : '',
+                app.location ? `<span class="text-sm text-muted flex items-center gap-1"><span aria-hidden="true" class="opacity-60">${icons.pin}</span> ${esc(app.location)}</span>` : '',
+                app.salary ? `<span class="text-sm text-muted tabular-nums font-medium">${esc(formatSalary(app.salary, app.salary_currency))}</span>` : '',
+                app.applied_at ? `<span class="text-sm text-muted tabular-nums">${appliedDate(app.applied_at)}</span>` : '',
+              ].filter(Boolean).join(META_SEP)}
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
@@ -247,12 +252,12 @@ export async function ListPage(): Promise<HTMLElement> {
               <div class="w-64 flex-shrink-0 flex flex-col">
                 <div class="flex items-center justify-between mb-3 px-1">
                   <span class="badge ${STATUS_COLORS[status]} text-xs">${esc(statusLabel(status))}</span>
-                  <span class="text-xs text-muted/60 font-medium tabular-nums">${colApps.length}</span>
+                  <span class="text-xs text-muted font-medium tabular-nums">${colApps.length}</span>
                 </div>
                 <div class="space-y-2 flex-1 min-h-24 bg-surface-2/30 rounded p-2" data-kanban-col="${esc(status)}">
                   ${colApps.length === 0 ? `
                     <div class="border border-dashed border-border/60 h-20 flex items-center justify-center">
-                      <span class="text-xs text-muted/30">${t('list.kanban_empty')}</span>
+                      <span class="text-xs text-muted">${t('list.kanban_empty')}</span>
                     </div>
                   ` : colApps.map(app => `
                     <div
@@ -264,10 +269,10 @@ export async function ListPage(): Promise<HTMLElement> {
                         <div class="text-muted text-xs truncate mb-2.5">${esc(app.job_title)}</div>
                       </a>
                       <div class="flex items-center justify-between gap-1">
-                        <span class="text-xs text-muted/70 tabular-nums font-medium">${app.salary ? esc(formatSalary(app.salary, app.salary_currency)) : ''}</span>
+                        <span class="text-xs text-muted tabular-nums font-medium">${app.salary ? esc(formatSalary(app.salary, app.salary_currency)) : ''}</span>
                         ${app.rating ? ratingStars(app.rating, 'text-xs shrink-0') : ''}
                       </div>
-                      ${app.applied_at ? `<div class="text-xs text-muted/60 mt-1.5 tabular-nums">${appliedDate(app.applied_at)}</div>` : ''}
+                      ${app.applied_at ? `<div class="text-xs text-muted mt-1.5 tabular-nums">${appliedDate(app.applied_at)}</div>` : ''}
                     </div>
                   `).join('')}
                 </div>
@@ -489,7 +494,7 @@ export async function ListPage(): Promise<HTMLElement> {
         <div class="flex flex-col sm:flex-row gap-3">
           <div class="flex-1 relative">
             <label for="search-input" class="sr-only">${t('common.search')}</label>
-            <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted/50 pointer-events-none" aria-hidden="true">${icons.search}</span>
+            <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden="true">${icons.search}</span>
             <input
               type="search"
               id="search-input"
@@ -590,7 +595,7 @@ export async function ListPage(): Promise<HTMLElement> {
         ` : ''}
 
         <div class="flex items-center justify-between">
-          <span id="result-count" class="text-xs text-muted/60 tabular-nums">${resp.total} ${tp('list.result_count', resp.total)}</span>
+          <span id="result-count" class="text-xs text-muted tabular-nums">${resp.total} ${tp('list.result_count', resp.total)}</span>
           <div id="pagination" class="flex items-center gap-1.5"${showPagination ? '' : ' style="display:none"'}>
             <button id="prev-page" class="btn-ghost p-1.5 ${resp.page <= 1 ? 'opacity-30 pointer-events-none' : ''}" title="${t('list.page_prev')}" ${resp.page <= 1 ? 'disabled' : ''}>
               ${icons.chevronLeft}

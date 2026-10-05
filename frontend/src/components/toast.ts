@@ -3,7 +3,7 @@ type ToastType = 'success' | 'error' | 'info'
 const typeStyles: Record<ToastType, string> = {
   success: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/90 dark:text-emerald-200',
   error: 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800/60 dark:bg-rose-950/90 dark:text-rose-200',
-  info: 'border-border bg-surface-1 text-primary/80',
+  info: 'border-border bg-surface-1 text-primary',
 }
 
 const typeIcons: Record<ToastType, string> = {

@@ -328,7 +328,7 @@ function heatmapChart(days: ActivityDay[]): string {
   }
 
   const monthRow = monthLabels.map(m => `
-    <span class="text-[11px] font-medium text-muted/70 font-caption" style="grid-column: ${m.col + 1} / span 1">${m.label}</span>
+    <span class="text-xs font-medium text-muted font-caption" style="grid-column: ${m.col + 1} / span 1">${m.label}</span>
   `).join('')
 
   return `
@@ -336,13 +336,13 @@ function heatmapChart(days: ActivityDay[]): string {
       <div class="heatmap-months" style="grid-template-columns: repeat(${WEEKS}, 1fr)">${monthRow}</div>
       <div class="heatmap" role="group" aria-label="${t('dashboard.heatmap_title')}" style="grid-template-columns: repeat(${WEEKS}, 1fr); grid-template-rows: repeat(7, 1fr); grid-auto-flow: column">${cells}</div>
       <div class="heatmap-legend">
-        <span class="text-[11px] font-medium text-muted/70 font-caption">${t('dashboard.heatmap_less')}</span>
+        <span class="text-xs font-medium text-muted font-caption">${t('dashboard.heatmap_less')}</span>
         <i></i>
         <i data-l="1"></i>
         <i data-l="2"></i>
         <i data-l="3"></i>
         <i data-l="4"></i>
-        <span class="text-[11px] font-medium text-muted/70 font-caption">${t('dashboard.heatmap_more')}</span>
+        <span class="text-xs font-medium text-muted font-caption">${t('dashboard.heatmap_more')}</span>
       </div>
       <div class="heatmap-day" hidden></div>
     </div>
@@ -808,7 +808,7 @@ function renderPanel(id: PanelId, stats: Stats | null): string {
                   <button data-snooze-id="${id}" data-snooze-days="7" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors">${t('dashboard.follow_up_snooze_1w')}</button>
                   <button data-snooze-id="${id}" data-snooze-days="14" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors hidden sm:block">${t('dashboard.follow_up_snooze_2w')}</button>
                   <button data-snooze-id="${id}" data-snooze-days="21" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-primary hover:bg-surface-2 transition-colors hidden sm:block">${t('dashboard.follow_up_snooze_3w')}</button>
-                  <button data-skip-id="${id}" class="text-xs px-3 py-2 rounded-full border border-border text-muted/50 hover:text-rose-500 hover:border-rose-300 dark:hover:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">${t('dashboard.follow_up_skip')}</button>
+                  <button data-skip-id="${id}" class="text-xs px-3 py-2 rounded-full border border-border text-muted hover:text-rose-500 hover:border-rose-300 dark:hover:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">${t('dashboard.follow_up_skip')}</button>
                 </div>
               </div>`
             }).join('')}
