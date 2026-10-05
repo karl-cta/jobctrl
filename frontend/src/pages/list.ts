@@ -41,7 +41,26 @@ const CONF_FILL: Record<number, string> = {
 const LIST_PERIODS = ['30', '90', '365']
 
 /** Dot between the details of a list card. */
-const META_SEP = '<span class="text-muted" aria-hidden="true">·</span>'
+const META_SEP = '<span class="text-muted shrink-0" aria-hidden="true">·</span>'
+
+/** The details of a list card in two groups: status and confidence, then
+ *  place, salary and date. On phones each group has its own line, so a dot
+ *  never ends or starts a line; a long place is truncated rather than wrapped. */
+function cardMeta(app: Application): string {
+  const first = [
+    `<span class="text-sm font-semibold ${STATUS_TEXT[app.status] || 'text-muted'}">${esc(statusLabel(app.status as ApplicationStatus))}</span>`,
+    app.confidence ? confidenceMeter(app.confidence) : '',
+  ].filter(Boolean).join(META_SEP)
+  const second = [
+    app.location ? `<span class="text-sm text-muted flex items-center gap-1 min-w-0"><span aria-hidden="true" class="opacity-60 shrink-0">${icons.pin}</span><span class="truncate">${esc(app.location)}</span></span>` : '',
+    app.salary ? `<span class="text-sm text-muted tabular-nums font-medium shrink-0">${esc(formatSalary(app.salary, app.salary_currency))}</span>` : '',
+    app.applied_at ? `<span class="text-sm text-muted tabular-nums shrink-0">${appliedDate(app.applied_at)}</span>` : '',
+  ].filter(Boolean).join(META_SEP)
+  return `<div class="ac-meta">
+    <span class="ac-meta-group">${first}</span>
+    ${second ? `<span class="hidden sm:inline text-muted" aria-hidden="true">·</span><span class="ac-meta-group w-full sm:w-auto">${second}</span>` : ''}
+  </div>`
+}
 
 /** Decorative star: the rating is spelled out in an sr-only span next to it. */
 const STAR = icons.star.replace('<svg ', '<svg aria-hidden="true" ')
@@ -203,26 +222,16 @@ export async function ListPage(): Promise<HTMLElement> {
     return `<div class="space-y-2">
       ${apps.map(app => `
         <div
-          class="card card-hover flex items-center justify-between gap-4 cursor-pointer group border-l-[3px] ${STATUS_BORDER[app.status] || 'border-l-border'}"
+          class="card card-hover app-card p-4 sm:p-6 cursor-pointer group border-l-[3px] ${STATUS_BORDER[app.status] || 'border-l-border'}"
           data-app-id="${esc(app.id)}"
         >
-          <button data-select-id="${esc(app.id)}" class="shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${selectedIds.has(app.id) ? 'bg-accent border-accent text-white' : 'border-border hover:border-accent/50'} ${selectMode ? '' : 'hidden'}" aria-pressed="${selectedIds.has(app.id)}" aria-label="${t('list.select')} ${esc(app.company_name)}">${selectedIds.has(app.id) ? '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>' : ''}</button>
-          <div class="flex-1 min-w-0">
-            <a href="/applications/${esc(app.id)}" data-link class="block mb-1.5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
-              <span class="font-semibold text-primary block break-words sm:truncate">${companyFavicon(app, 'w-5 h-5 sm:w-6 sm:h-6 inline-block -mt-0.5 mr-1.5')}${esc(app.company_name)}</span>
-              <span class="text-muted text-sm block break-words sm:truncate">${esc(app.job_title)}</span>
-            </a>
-            <div class="flex items-center gap-2 flex-wrap">
-              ${[
-                `<span class="text-sm font-semibold ${STATUS_TEXT[app.status] || 'text-muted'}">${esc(statusLabel(app.status as ApplicationStatus))}</span>`,
-                app.confidence ? confidenceMeter(app.confidence) : '',
-                app.location ? `<span class="text-sm text-muted flex items-center gap-1"><span aria-hidden="true" class="opacity-60">${icons.pin}</span> ${esc(app.location)}</span>` : '',
-                app.salary ? `<span class="text-sm text-muted tabular-nums font-medium">${esc(formatSalary(app.salary, app.salary_currency))}</span>` : '',
-                app.applied_at ? `<span class="text-sm text-muted tabular-nums">${appliedDate(app.applied_at)}</span>` : '',
-              ].filter(Boolean).join(META_SEP)}
-            </div>
-          </div>
-          <div class="flex items-center gap-2 shrink-0">
+          <button data-select-id="${esc(app.id)}" class="ac-select shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${selectedIds.has(app.id) ? 'bg-accent border-accent text-white' : 'border-border hover:border-accent/50'} ${selectMode ? '' : 'hidden'}" aria-pressed="${selectedIds.has(app.id)}" aria-label="${t('list.select')} ${esc(app.company_name)}">${selectedIds.has(app.id) ? '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>' : ''}</button>
+          <a href="/applications/${esc(app.id)}" data-link class="ac-title block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+            <span class="font-semibold text-primary block break-words sm:truncate">${companyFavicon(app, 'w-5 h-5 sm:w-6 sm:h-6 inline-block -mt-0.5 mr-1.5')}${esc(app.company_name)}</span>
+            <span class="text-muted text-sm block break-words sm:truncate">${esc(app.job_title)}</span>
+          </a>
+          ${cardMeta(app)}
+          <div class="ac-actions flex items-center gap-1 sm:gap-2 shrink-0">
             ${app.rating ? ratingStars(app.rating, 'text-sm') : ''}
             <button data-delete-id="${esc(app.id)}" class="btn-ghost sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 text-red-500 dark:text-red-400 hover:bg-red-500/10 p-1.5 min-w-[44px] min-h-[44px] transition-all duration-150" title="${t('detail.delete')}">
               ${icons.trash}

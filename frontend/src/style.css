@@ -403,6 +403,49 @@ input.input::-webkit-date-and-time-value {
   transition: left 0.25s cubic-bezier(0.16, 1, 0.3, 1), width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* List card: name and job title next to the rating and actions, details
+   below. On phones the details take the full card width; from tablets up the
+   actions sit on the right of both rows. */
+.app-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "select title actions"
+    "select meta  meta";
+  align-items: center;
+  row-gap: 6px;
+}
+
+.ac-select { grid-area: select; margin-right: 12px; }
+.ac-title { grid-area: title; min-width: 0; }
+.ac-actions { grid-area: actions; margin-left: 8px; }
+
+.ac-meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.ac-meta-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (min-width: 640px) {
+  .app-card {
+    grid-template-areas:
+      "select title actions"
+      "select meta  actions";
+  }
+  .ac-actions { margin-left: 16px; }
+}
+
 /* Source autocomplete */
 .source-dropdown {
   position: absolute;
