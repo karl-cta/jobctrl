@@ -151,7 +151,7 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         </div>
         <div>
           <label for="f-job-description" class="label">${t('form.description')}</label>
-          <textarea id="f-job-description" name="job_description" class="input min-h-[100px]">${v('job_description')}</textarea>
+          <textarea id="f-job-description" name="job_description" class="input h-56 resize-y">${v('job_description')}</textarea>
         </div>
       </div>
 
@@ -217,11 +217,11 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
         <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${t('form.notes_section')}</h2>
         <div>
           <label for="f-notes" class="label">${t('form.notes')}</label>
-          <textarea id="f-notes" name="notes" class="input min-h-[80px]" placeholder="${t('form.notes_placeholder')}">${v('notes')}</textarea>
+          <textarea id="f-notes" name="notes" class="input h-40 resize-y" placeholder="${t('form.notes_placeholder')}">${v('notes')}</textarea>
         </div>
         <div>
           <label for="f-speech" class="label">${t('form.speech')}</label>
-          <textarea id="f-speech" name="speech" class="input min-h-[80px]" placeholder="${t('form.speech_placeholder')}">${v('speech')}</textarea>
+          <textarea id="f-speech" name="speech" class="input h-40 resize-y" placeholder="${t('form.speech_placeholder')}">${v('speech')}</textarea>
         </div>
       </div>
 

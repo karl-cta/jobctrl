@@ -120,7 +120,7 @@ function buildInterviewForm(iv?: Partial<Interview>): {
     </div>
     <div>
       <label for="iv-notes" class="label">${t('detail.interview_notes')}</label>
-      <textarea id="iv-notes" name="notes" class="input min-h-[60px]">${esc(iv?.notes)}</textarea>
+      <textarea id="iv-notes" name="notes" class="input h-32 resize-y">${esc(iv?.notes)}</textarea>
     </div>
     <div class="flex justify-end pt-2">
       <button type="button" data-save class="btn-primary">${t('detail.save')}</button>
@@ -181,7 +181,7 @@ function buildContactForm(c?: Partial<Contact>): {
     </div>
     <div>
       <label for="ct-notes" class="label">${t('detail.contact_notes')}</label>
-      <textarea id="ct-notes" name="notes" class="input min-h-[60px]">${esc(c?.notes)}</textarea>
+      <textarea id="ct-notes" name="notes" class="input h-32 resize-y">${esc(c?.notes)}</textarea>
     </div>
     <div class="flex justify-end pt-2">
       <button type="button" data-save class="btn-primary">${t('detail.save')}</button>
@@ -614,12 +614,14 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       e.preventDefault()
       items[next]?.focus()
     })
-    // Tabbing out closes the menu. A null relatedTarget (a click on something that does not
-    // take focus, as Safari does for buttons) is left to the document click listener below,
-    // otherwise the menu would hide before the item's own click lands.
+    // Safari and Firefox do not focus a button on click: focus would jump to the nearest
+    // focusable ancestor (<main tabindex="-1">), the focusout below would close the menu,
+    // and the item's click would never land. Keeping focus where it is avoids that.
+    confDrop.addEventListener('pointerdown', (e) => e.preventDefault())
+    // Tabbing out closes the menu. Clicks outside are left to the document listener below.
     confWrapper.addEventListener('focusout', (e) => {
       const next = e.relatedTarget as Node | null
-      if (next && !confWrapper.contains(next)) closeConf()
+      if (next && !confWrapper.contains(next) && !next.contains(confWrapper)) closeConf()
     })
     // Capture phase runs before confBtn's own handler, so ignore clicks inside the picker
     // or the button could never close the menu it opened.
@@ -685,7 +687,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const notesPanel = document.createElement('div')
   notesPanel.className = 'p-6 space-y-4'
   const notesTA = document.createElement('textarea')
-  notesTA.className = 'input min-h-[150px] w-full'
+  notesTA.className = 'input h-72 resize-y w-full'
   notesTA.value = app.notes ?? ''
   notesTA.placeholder = t('detail.no_notes')
   notesTA.setAttribute('aria-label', t('detail.tab_notes'))
@@ -711,7 +713,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const prepPanel = document.createElement('div')
   prepPanel.className = 'p-6 space-y-4'
   const prepTA = document.createElement('textarea')
-  prepTA.className = 'input min-h-[150px] w-full'
+  prepTA.className = 'input h-72 resize-y w-full'
   prepTA.value = app.speech ?? ''
   prepTA.placeholder = t('detail.no_prep')
   prepTA.setAttribute('aria-label', t('detail.tab_prep'))
@@ -737,7 +739,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const offerPanel = document.createElement('div')
   offerPanel.className = 'p-6 space-y-4'
   const offerTA = document.createElement('textarea')
-  offerTA.className = 'input min-h-[150px] w-full whitespace-pre-wrap'
+  offerTA.className = 'input h-72 resize-y w-full whitespace-pre-wrap'
   offerTA.value = app.job_description ?? ''
   offerTA.placeholder = t('detail.no_offer')
   offerTA.setAttribute('aria-label', t('detail.tab_offer'))
@@ -1049,7 +1051,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       row.className = 'flex items-start gap-3 relative pl-5 pb-5 last:pb-0'
       row.innerHTML = `
         <div class="absolute left-0 top-2 -translate-x-1/2 w-2.5 h-2.5 rounded-full ${dotColors[e.event_type] || 'bg-accent'} ring-2 ring-surface-1 shrink-0"></div>
-        <div>
+        <div class="min-w-0">
           <p class="text-sm text-primary/80">${esc(translateTimelineEvent(e.event_type, e.description))}</p>
           <p class="text-xs text-muted/60 mt-0.5 tabular-nums">${new Date(e.created_at).toLocaleString(dateFmt)}</p>
         </div>

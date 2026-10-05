@@ -99,6 +99,8 @@
 
   body {
     @apply font-sans antialiased min-h-screen bg-surface text-primary;
+    /* A long URL pasted in a note wraps instead of overflowing its card. */
+    overflow-wrap: break-word;
   }
 
   :root body {
@@ -168,6 +170,14 @@
   .card {
     @apply rounded border border-border p-6 backdrop-blur-md;
     background: rgb(var(--color-surface-1) / 0.7);
+    position: relative;
+  }
+
+  /* backdrop-blur makes each card its own stacking context, so a dropdown open
+     in one card (source suggestions, menus) would slide under the next card.
+     The card being used comes first. */
+  .card:focus-within {
+    z-index: 10;
   }
 
   .dark .card {
@@ -301,6 +311,21 @@
 .stagger > :nth-child(6) { animation-delay: 300ms; }
 .stagger > :nth-child(7) { animation-delay: 360ms; }
 .stagger > :nth-child(8) { animation-delay: 420ms; }
+
+/* iOS draws date and time inputs at their own intrinsic width, ignoring
+   width: 100%, so they overflowed narrow cards. Without native appearance they
+   follow the layout; the min-height keeps an empty one from collapsing. */
+input.input[type="date"],
+input.input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  min-height: 2.625rem;
+}
+
+input.input::-webkit-date-and-time-value {
+  text-align: left;
+}
 
 /* Prevent iOS auto-zoom on input focus (triggers at font-size < 16px) */
 @media screen and (max-width: 767px) {
@@ -1467,6 +1492,13 @@
   color: rgb(var(--color-muted));
   min-width: 0;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  /* A long note stays a three-line entry; the full text is in the history. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
 }
 
 .feed-what b {
