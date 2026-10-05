@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.1 - 2026-10-05
+
+No migration and no API change: pull and restart.
+
+### Fixes
+- "My confidence" can be changed from the application page in Safari and Firefox again: the menu closed before the click landed.
+- Source suggestions and menus no longer slide under the next card.
+- Long links in notes wrap instead of overflowing the activity feed and the history; feed entries keep to three lines.
+- The application date field fits its card on iPhone.
+- Notes, preparation and offer fields have a fixed height and scroll inside, so switching tabs no longer resizes the page.
+
+### Application page
+- Status, interest and confidence sit in the same grid as the other details, and interest can be changed in place.
+- On wide screens, the side column shows the next interview and the contacts above the company details.
+
+### Readability
+- Fewer text sizes and shades, labels in sentence case instead of spaced capitals, larger list card details separated by dots.
+
 ## 1.2.0 - 2026-10-02
 
 Your data is safe across this upgrade: the database is snapshotted before the one new migration runs. That migration removes rows that earlier versions left behind when you deleted an application (its interviews, contacts and timeline events, which were no longer visible anywhere). See "Upgrading" in the README.
