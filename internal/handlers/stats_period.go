@@ -278,7 +278,9 @@ func computePeriodStats(now time.Time, days int, apps []sentApp, interviews []in
 		}
 	}
 
-	type counters struct{ sent, responded, interviewing, offers, accepted, rejected, noReply, interviewed int }
+	// noReply counts every NoReply application (the KPI tile, which links to
+	// status=NoReply); unanswered leaves out those that landed an interview.
+	type counters struct{ sent, responded, interviewing, offers, accepted, rejected, noReply, interviewed, unanswered, pending int }
 	var cur, prev counters
 	sentSeries := make([]float64, sparkBuckets)
 	respondedSeries := make([]float64, sparkBuckets)
@@ -294,8 +296,15 @@ func computePeriodStats(now time.Time, days int, apps []sentApp, interviews []in
 
 	tally := func(c *counters, a sentApp) {
 		c.sent++
-		if replied(a) {
+		// Each sent application is in exactly one of these three, so the
+		// funnel's responded + unanswered + pending always adds up to sent.
+		switch {
+		case replied(a):
 			c.responded++
+		case a.status == string(models.StatusNoReply):
+			c.unanswered++
+		default:
+			c.pending++
 		}
 		// "Reached the interview stage" = had at least one interview, or sits
 		// at Interviewing or beyond (older data may have no interview rows).
@@ -390,6 +399,8 @@ func computePeriodStats(now time.Time, days int, apps []sentApp, interviews []in
 		Interviewing: cur.interviewing,
 		Offers:       cur.offers,
 		Accepted:     cur.accepted,
+		NoReply:      cur.unanswered,
+		Pending:      cur.pending,
 	}
 	return ps
 }

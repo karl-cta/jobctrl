@@ -192,6 +192,12 @@ type FunnelStats struct {
 	Interviewing int `json:"interviewing"`
 	Offers       int `json:"offers"`
 	Accepted     int `json:"accepted"`
+	// NoReply and Pending split the sent applications that got no answer:
+	// given up on (status NoReply) or still waiting. Responded + NoReply +
+	// Pending = Sent. A NoReply application with an interview is Responded
+	// here, so NoReply can be lower than the period's no_reply KPI.
+	NoReply int `json:"no_reply"`
+	Pending int `json:"pending"`
 }
 
 // WeeklyPoint is one week (Monday-based) of the 12-week timeline chart.

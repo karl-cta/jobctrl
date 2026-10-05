@@ -72,8 +72,11 @@ func (h *Handler) MarkNoReply(ctx context.Context, now time.Time, days int) (int
 	stamp := sqliteTime(now)
 	var n int
 	for _, id := range stale {
+		// Check the status and the interview again: the user may have moved
+		// the application or added an interview since noReplyCandidates ran.
 		res, err := tx.ExecContext(ctx,
-			`UPDATE applications SET status = ?, updated_at = ? WHERE id = ? AND status = ?`,
+			`UPDATE applications AS a SET status = ?, updated_at = ?
+			 WHERE a.id = ? AND a.status = ? AND NOT `+hasInterviewSQL,
 			models.StatusNoReply, stamp, id, models.StatusApplied)
 		if err != nil {
 			return n, err

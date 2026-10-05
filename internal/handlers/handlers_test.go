@@ -1575,7 +1575,7 @@ func TestStats_PeriodCohort(t *testing.T) {
 		assertFloat(t, "interviews.value", p.Interviews.Value, 0, 0)
 		assertPrev(t, "interviews", p.Interviews.Prev, 0)
 
-		want := models.FunnelStats{Sent: 7, Responded: 5, Interviewing: 3, Offers: 2, Accepted: 1}
+		want := models.FunnelStats{Sent: 7, Responded: 5, Interviewing: 3, Offers: 2, Accepted: 1, Pending: 2}
 		if p.Funnel != want {
 			t.Errorf("funnel = %+v, want %+v", p.Funnel, want)
 		}
@@ -1595,7 +1595,7 @@ func TestStats_PeriodCohort(t *testing.T) {
 		assertFloat(t, "offers.value", p.Offers.Value, 3, 0)
 		// Responded: 5 (current) + 2 (previous) + 1 (older Rejected) = 8 of 12.
 		assertFloat(t, "response_rate.value", p.ResponseRate.Value, 800.0/12.0, 1e-9)
-		want := models.FunnelStats{Sent: 12, Responded: 8, Interviewing: 4, Offers: 3, Accepted: 1}
+		want := models.FunnelStats{Sent: 12, Responded: 8, Interviewing: 4, Offers: 3, Accepted: 1, Pending: 4}
 		if p.Funnel != want {
 			t.Errorf("funnel = %+v, want %+v", p.Funnel, want)
 		}
@@ -1930,6 +1930,32 @@ func TestStats_NoReplyCountsAsSentNotResponded(t *testing.T) {
 	assertPrev(t, "period.no_reply", stats.Period.NoReply.Prev, 0)
 	if got := sumFloats(stats.Period.NoReply.Series); got != 1 {
 		t.Errorf("sum(period.no_reply.series) = %v, want 1", got)
+	}
+}
+
+// The funnel footer splits what got no answer into no_reply and pending. A
+// NoReply application that landed an interview is a reply, never also in
+// no_reply, so responded + no_reply + pending is exactly sent.
+func TestStats_FunnelNoReplyAndPendingAddUpToSent(t *testing.T) {
+	ts := newTestServer(t)
+	interviewed := createApp(t, ts, map[string]any{"status": "NoReply", "applied_at": daysAgo(10)})
+	postInterview(t, ts, interviewed.ID, map[string]any{"round": 1, "type": "Phone", "scheduled_at": daysAgo(3)})
+	createApp(t, ts, map[string]any{"status": "NoReply", "applied_at": daysAgo(10)})
+	createApp(t, ts, map[string]any{"status": "Applied", "applied_at": daysAgo(10)})
+	createApp(t, ts, map[string]any{"status": "Applied", "applied_at": daysAgo(10)})
+	createApp(t, ts, map[string]any{"status": "Screening", "applied_at": daysAgo(10)})
+
+	p := getStats(t, ts, "?period=30").Period
+	want := models.FunnelStats{Sent: 5, Responded: 2, Interviewing: 1, NoReply: 1, Pending: 2}
+	if p.Funnel != want {
+		t.Errorf("funnel = %+v, want %+v", p.Funnel, want)
+	}
+	if f := p.Funnel; f.Responded+f.NoReply+f.Pending != f.Sent {
+		t.Errorf("responded %d + no_reply %d + pending %d != sent %d", f.Responded, f.NoReply, f.Pending, f.Sent)
+	}
+	// The KPI tile still counts both NoReply applications: it links to status=NoReply.
+	if got := p.NoReply.Value; got != 2 {
+		t.Errorf("period.no_reply.value = %v, want 2", got)
 	}
 }
 
@@ -2543,6 +2569,38 @@ func TestMarkNoReply_SkipsApplicationsWithAnInterview(t *testing.T) {
 	}
 }
 
+// An interview added after the job picked its candidates still wins: the
+// UPDATE checks for one itself instead of trusting the earlier SELECT.
+func TestMarkNoReply_InterviewAddedMidRunIsRespected(t *testing.T) {
+	ts := newTestServer(t)
+	a := createApp(t, ts, map[string]any{"company_name": "A", "status": "Applied", "applied_at": daysAgo(40)})
+	b := createApp(t, ts, map[string]any{"company_name": "B", "status": "Applied", "applied_at": daysAgo(40)})
+	// Both are stale when the job reads them. As soon as it moves the first
+	// one to NoReply, the other gets an interview, as if the user added one
+	// between the job's SELECT and its UPDATE. Whichever comes first, the
+	// second must be left alone.
+	rawExec(t, ts, `CREATE TRIGGER race_interview AFTER UPDATE OF status ON applications
+		WHEN NEW.status = 'NoReply' BEGIN
+			INSERT INTO interviews (id, application_id)
+			SELECT 'race-' || id, id FROM applications WHERE status = 'Applied';
+		END`)
+
+	if n := markNoReply(t, ts, 30); n != 1 {
+		t.Fatalf("MarkNoReply returned %d, want 1", n)
+	}
+	statuses := map[models.ApplicationStatus]int{}
+	for _, id := range []string{a.ID, b.ID} {
+		statuses[getApp(t, ts, id).Status]++
+	}
+	if statuses[models.StatusNoReply] != 1 || statuses[models.StatusApplied] != 1 {
+		t.Errorf("statuses = %v, want one NoReply and one Applied", statuses)
+	}
+	// The timeline event follows the row actually updated, never the skipped one.
+	if got := rawCount(t, ts, `SELECT COUNT(*) FROM timeline_events WHERE id LIKE 'auto-noreply-%'`); got != 1 {
+		t.Errorf("auto-noreply events = %d, want 1", got)
+	}
+}
+
 func TestActivity_HeatmapMatchesDayPanel(t *testing.T) {
 	ts := newTestServer(t)
 	day := time.Now().UTC().AddDate(0, 0, -10)
@@ -2679,7 +2737,7 @@ func TestStats_InterviewCountsAsReply(t *testing.T) {
 	createApp(t, ts, map[string]any{"status": "Applied", "applied_at": daysAgo(10)})
 
 	p := getStats(t, ts, "?period=30").Period
-	want := models.FunnelStats{Sent: 2, Responded: 1, Interviewing: 1}
+	want := models.FunnelStats{Sent: 2, Responded: 1, Interviewing: 1, Pending: 1}
 	if p.Funnel != want {
 		t.Errorf("funnel = %+v, want %+v (an interview is an answer)", p.Funnel, want)
 	}
@@ -2755,6 +2813,9 @@ func TestStats_TileTotalsMatchList(t *testing.T) {
 		}
 		if p.Funnel.Interviewing > p.Funnel.Responded || p.Funnel.Responded > p.Funnel.Sent {
 			t.Errorf("period %s: funnel is not monotonic: %+v", period, p.Funnel)
+		}
+		if f := p.Funnel; f.Responded+f.NoReply+f.Pending != f.Sent || f.NoReply < 0 || f.Pending < 0 {
+			t.Errorf("period %s: funnel footer does not add up to sent: %+v", period, f)
 		}
 	}
 

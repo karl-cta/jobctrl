@@ -23,9 +23,11 @@ const contentSecurityPolicy = "default-src 'self'; script-src 'self'; " +
 	"connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; " +
 	"form-action 'self'; object-src 'none'"
 
-// maxBodyBytes caps API request bodies. POST /api/import takes whole backups
-// and enforces its own, larger limit.
-const maxBodyBytes = 1 << 20
+// maxBodyBytes caps API request bodies. Updating an application sends the
+// whole row, and one restored from a backup can carry notes or a job
+// description over 1 MiB, so the cap leaves room for those. POST /api/import
+// takes whole backups and enforces its own, larger limit.
+const maxBodyBytes = 8 << 20
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -115,6 +115,10 @@ export interface FunnelStats {
   interviewing: number
   offers: number
   accepted: number
+  /** The sent applications without an answer, given up on (NoReply) or still
+   *  waiting: responded + no_reply + pending = sent. */
+  no_reply: number
+  pending: number
 }
 
 /** Metrics that depend on the dashboard period selector. `days` is 0 for "all time". */

@@ -206,7 +206,7 @@ func TestOddPathsDoNotPanic(t *testing.T) {
 
 func TestBodyLimit(t *testing.T) {
 	h := newHandler(t)
-	big := strings.Repeat("x", 2<<20)
+	big := strings.Repeat("x", 9<<20) // over the 8 MiB cap
 
 	payload, _ := json.Marshal(map[string]string{"company_name": "Acme", "job_title": "Dev", "notes": big})
 	req := httptest.NewRequest(http.MethodPost, "/api/applications", bytes.NewReader(payload))
@@ -225,6 +225,15 @@ func TestBodyLimit(t *testing.T) {
 	rec = serve(h, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("large import: status = %d, want 200 (%s)", rec.Code, rec.Body)
+	}
+
+	// Notes over 1 MiB, as a record restored from a backup can carry, still
+	// fit under the cap.
+	payload, _ = json.Marshal(map[string]string{"company_name": "Acme", "job_title": "Dev", "notes": strings.Repeat("x", 2<<20)})
+	req = httptest.NewRequest(http.MethodPost, "/api/applications", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	if rec := serve(h, req); rec.Code != http.StatusCreated {
+		t.Errorf("2 MiB create: status = %d, want 201 (%s)", rec.Code, rec.Body)
 	}
 
 	// A normal-sized body is untouched.
