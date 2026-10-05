@@ -251,15 +251,19 @@ export async function FormPage(id?: string): Promise<HTMLElement> {
     if (!isDirty()) return true
     return confirm(t('form.unsaved_changes'))
   })
+  // Document listeners added below, removed on the next navigation so visits do not
+  // pile them up.
+  const docListeners = new AbortController()
   setNavigationCleanup(() => {
     window.removeEventListener('beforeunload', handleBeforeUnload)
+    docListeners.abort()
   })
 
   content.querySelector('#back-btn')?.addEventListener('click', () => navigate(isEdit ? '/applications/' + id : '/applications'))
   content.querySelector('#cancel-btn')?.addEventListener('click', () => navigate(isEdit ? '/applications/' + id : '/applications'))
 
   const sourceInput = content.querySelector('#f-source') as HTMLInputElement | null
-  if (sourceInput) setupSourceAutocomplete(sourceInput, () => api.sources())
+  if (sourceInput) setupSourceAutocomplete(sourceInput, () => api.sources(), { signal: docListeners.signal })
 
   // Show/hide duration field based on contract type
   const contractSelect = content.querySelector('#f-contract-type') as HTMLSelectElement | null

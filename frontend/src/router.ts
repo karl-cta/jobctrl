@@ -92,6 +92,16 @@ function setTitle(text?: string | null) {
 // discards them cleanly.
 let rendering = false
 let queuedPath: string | null = null
+// Path and query of the last page rendered. A history entry that only differs
+// by its hash (the skip link) fires popstate too, and must not re-render it.
+let renderedUrl = ''
+
+/** Updates the address of the current page in place (filters kept in the
+ *  query string) without re-rendering it. */
+export function replaceUrl(url: string) {
+  window.history.replaceState({}, '', url)
+  renderedUrl = location.pathname + location.search
+}
 
 async function render(path: string) {
   if (rendering) {
@@ -114,6 +124,8 @@ async function render(path: string) {
 async function renderNow(path: string) {
   if (navigationCleanup) { navigationCleanup(); navigationCleanup = null }
   setNavigationGuard(null)
+  // Read from location rather than `path`, so both are encoded the same way.
+  renderedUrl = location.pathname + location.search
 
   const app = document.getElementById('app')!
   const pathname = path.split('?')[0]
@@ -166,7 +178,11 @@ async function renderNow(path: string) {
       return
     }
   }
-  app.innerHTML = `<div class="flex items-center justify-center h-screen text-muted">${t('common.page_not_found')}</div>`
+  app.innerHTML = `
+    <div class="flex flex-col items-center justify-center h-screen gap-4 px-5 text-center text-muted">
+      <p>${t('common.page_not_found')}</p>
+      <a href="/" data-link class="btn-ghost">${t('nav.dashboard')}</a>
+    </div>`
   app.classList.remove('route-exit')
   setTitle(t('common.page_not_found'))
 }
@@ -185,6 +201,7 @@ function renderError(app: HTMLElement) {
 
 export function initRouter() {
   window.addEventListener('popstate', () => {
+    if (location.pathname + location.search === renderedUrl) return
     if (!checkGuard()) {
       window.history.pushState({}, '', guardUrl || location.pathname + location.search)
       return

@@ -571,11 +571,10 @@ function funnelPanel(period: PeriodStats | undefined): string {
     { label: t('dashboard.funnel_accepted'), value: f?.accepted ?? 0, color: 'chart-accepted' },
   ]
 
-  // Same period as the funnel: what is not in the replies bar is either
-  // unanswered or still pending, so replies + these two add up to `sent`.
-  // Clamped because the counts are computed independently server-side.
-  const noReply = Math.round(period?.no_reply?.value ?? 0)
-  const pending = Math.max(0, sent - responded - noReply)
+  // What is not in the replies bar is either given up on or still pending:
+  // the server splits it so that replies + these two add up to `sent`.
+  const noReply = f?.no_reply ?? 0
+  const pending = f?.pending ?? 0
 
   // "50 %" in French, "50%" in English.
   const percent = new Intl.NumberFormat(getDateLocale(), { style: 'percent', maximumFractionDigits: 0 })
@@ -1449,8 +1448,8 @@ export async function DashboardPage(): Promise<HTMLElement> {
         return
       }
       const result = await api.import_(data)
-      const parts = [`${result.imported} ${t('dashboard.import_success')}`]
-      if (result.skipped > 0) parts.push(`${result.skipped} ${t('dashboard.import_skipped')}`)
+      const parts = [count('dashboard.import_success', result.imported)]
+      if (result.skipped > 0) parts.push(count('dashboard.import_skipped', result.skipped))
       toast(parts.join(', '), result.imported > 0 ? 'success' : 'info')
       if (result.imported > 0) setTimeout(() => rerender(), 1500)
     } catch {

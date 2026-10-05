@@ -1,6 +1,6 @@
 import { api } from '../api'
 import { createLayout } from '../components/layout'
-import { navigate } from '../router'
+import { navigate, replaceUrl } from '../router'
 import { t, tp, getDateLocale } from '../i18n'
 import { icons } from '../icons'
 import { esc } from '../sanitize'
@@ -44,8 +44,9 @@ const LIST_PERIODS = ['30', '90', '365']
 const META_SEP = '<span class="text-muted shrink-0" aria-hidden="true">·</span>'
 
 /** The details of a list card in two groups: status and confidence, then
- *  place, salary and date. On phones each group has its own line, so a dot
- *  never ends or starts a line; a long place is truncated rather than wrapped. */
+ *  place, salary and date. On phones and tablets each group has its own line,
+ *  so a dot never ends or starts a line; a long place is truncated rather than
+ *  wrapped. */
 function cardMeta(app: Application): string {
   const first = [
     `<span class="text-sm font-semibold ${STATUS_TEXT[app.status] || 'text-muted'}">${esc(statusLabel(app.status as ApplicationStatus))}</span>`,
@@ -58,7 +59,7 @@ function cardMeta(app: Application): string {
   ].filter(Boolean).join(META_SEP)
   return `<div class="ac-meta">
     <span class="ac-meta-group">${first}</span>
-    ${second ? `<span class="hidden sm:inline text-muted" aria-hidden="true">·</span><span class="ac-meta-group w-full sm:w-auto">${second}</span>` : ''}
+    ${second ? `<span class="hidden lg:inline text-muted" aria-hidden="true">·</span><span class="ac-meta-group w-full lg:w-auto">${second}</span>` : ''}
   </div>`
 }
 
@@ -82,12 +83,18 @@ function companyFavicon(app: Application, cls = 'w-5 h-5'): string {
 
 function confidenceMeter(level: number): string {
   return `<span class="inline-flex gap-1 items-center" role="img" aria-label="${t('form.confidence')}: ${level}/4" title="${t('form.confidence_' + level)}">
-    <span class="text-sm text-muted">${t('form.confidence')}</span>
+    <span class="text-sm text-muted whitespace-nowrap">${t('form.confidence')}</span>
     <span class="inline-flex gap-px items-center">${
     [1,2,3,4].map(n =>
       `<span class="w-1.5 h-3 rounded-sm ${n <= level ? (CONF_FILL[level] || 'bg-muted') : 'bg-surface-3/50'}"></span>`
     ).join('')
   }</span></span>`
+}
+
+/** A filter chip's text, "Source : Indeed" in French and "Source: Indeed" in
+ *  English. `value` is already escaped HTML. */
+function chipText(label: string, value: string): string {
+  return t('list.filter_chip').replace('{label}', () => label).replace('{value}', () => value)
 }
 
 function ratingStars(rating: number, cls: string): string {
@@ -178,7 +185,7 @@ export async function ListPage(): Promise<HTMLElement> {
     if (searchQuery) q.set('q', searchQuery)
     if (viewMode === 'table' && currentPage > 1) q.set('page', String(currentPage))
     const qs = q.toString()
-    window.history.replaceState({}, '', `/applications${qs ? '?' + qs : ''}`)
+    replaceUrl(`/applications${qs ? '?' + qs : ''}`)
   }
 
   function renderEmpty(): string {
@@ -553,7 +560,7 @@ export async function ListPage(): Promise<HTMLElement> {
           ${sourceFilter ? `
           <div id="source-chip" class="flex items-center chip-enter">
             <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
-              ${t('list.source_filter')}: ${esc(sourceFilter)}
+              ${chipText(t('list.source_filter'), esc(sourceFilter))}
               <button id="clear-source" class="hover:bg-accent/20 rounded-full p-0.5 transition-colors" title="${t('list.clear_source')}">
                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
@@ -583,7 +590,7 @@ export async function ListPage(): Promise<HTMLElement> {
           ${statusFilter.length > 1 ? `
           <div id="status-chip" class="flex items-center chip-enter">
             <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium">
-              ${t('form.status')}: ${statusFilter.map(s => esc(statusLabel(s))).join(', ')}
+              ${chipText(t('form.status'), statusFilter.map(s => esc(statusLabel(s))).join(', '))}
               <button id="clear-status" class="hover:bg-accent/20 rounded-full p-0.5 transition-colors" title="${t('list.clear_status')}">
                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
@@ -746,7 +753,7 @@ export async function ListPage(): Promise<HTMLElement> {
         btn.disabled = true
         try {
           const result = await api.applications.bulkStatus(ids, status)
-          toast(t('list.bulk_done').replace('{count}', String(result.updated)), 'success')
+          toast(tp('list.bulk_done', result.updated).replace('{count}', String(result.updated)), 'success')
           toggleSelectMode(false)
           load()
         } catch {
@@ -759,11 +766,11 @@ export async function ListPage(): Promise<HTMLElement> {
       content.querySelector('#bulk-delete-btn')?.addEventListener('click', async (e) => {
         const btn = e.currentTarget as HTMLButtonElement
         const ids = [...selectedIds]
-        if (!confirm(t('list.bulk_delete_confirm').replace('{count}', String(ids.length)))) return
+        if (!confirm(tp('list.bulk_delete_confirm', ids.length).replace('{count}', String(ids.length)))) return
         btn.disabled = true
         try {
           const result = await api.applications.bulkDelete(ids)
-          toast(t('list.bulk_deleted').replace('{count}', String(result.deleted)), 'info')
+          toast(tp('list.bulk_deleted', result.deleted).replace('{count}', String(result.deleted)), 'info')
           toggleSelectMode(false)
           load()
         } catch {

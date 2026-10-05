@@ -50,9 +50,11 @@ function buildSuggestions(userSources: string[]): Suggestion[] {
 
 const MAX_RESULTS = 8
 
+/** `signal` removes the document listener when aborted (the page's navigation cleanup). */
 export function setupSourceAutocomplete(
   input: HTMLInputElement,
   fetchUserSources: () => Promise<string[]>,
+  options: { signal?: AbortSignal } = {},
 ): void {
   const wrapper = document.createElement('div')
   wrapper.className = 'relative'
@@ -239,5 +241,5 @@ export function setupSourceAutocomplete(
 
   document.addEventListener('click', (e) => {
     if (!wrapper.contains(e.target as Node)) hide()
-  })
+  }, { signal: options.signal })
 }
