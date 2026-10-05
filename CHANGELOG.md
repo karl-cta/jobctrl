@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.2.2 - 2026-10-05
+
+No migration and no API break: pull and restart.
+
+### Fixes
+- List cards on phones and tablets: rating and delete sit next to the company name, and the details take two clean lines with no stray dot.
+- Changing status, interest and confidence in quick succession no longer lets one change undo another.
+- The next interview card keeps a date-only interview for the whole day and an interview while it is in progress.
+- The contacts card shows emails it cannot turn into a link, and phone numbers become links.
+- A double click on a delete confirmation no longer shows an error after a successful delete.
+- The funnel footer ("no reply", "pending") now adds up to the applications sent.
+- Bulk and import messages use the singular when there is one item; French filter chips use French spacing.
+- The interview date and time fields stack on small phones, and the detail tabs no longer show a scrollbar.
+- The skip link no longer reloads the page, and the not found page links back to the dashboard.
+- An application restored with more than 1 MiB of notes can be saved again (request bodies up to 8 MiB).
+- The automatic "No reply" move checks again for an interview at the moment it writes.
+
+### API
+- `GET /api/stats` adds `funnel.no_reply` and `funnel.pending`.
+
 ## 1.2.1 - 2026-10-05
 
 No migration and no API change: pull and restart.
