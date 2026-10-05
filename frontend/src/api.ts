@@ -71,8 +71,11 @@ export const api = {
     get: (id: string) => request<Application>(`/applications/${seg(id)}`),
     create: (data: Partial<Application>) =>
       request<Application>('/applications', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: Partial<Application>) =>
-      request<Application>(`/applications/${seg(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+    // The nested lists are ignored by the server: they would only make the request heavier.
+    update: (id: string, data: Partial<Application>) => {
+      const { interviews: _interviews, contacts: _contacts, timeline_events: _events, ...fields } = data
+      return request<Application>(`/applications/${seg(id)}`, { method: 'PUT', body: JSON.stringify(fields) })
+    },
     delete: (id: string) => request<void>(`/applications/${seg(id)}`, { method: 'DELETE' }),
     snooze: (id: string, data: { until?: string; skip?: boolean }) =>
       request<{ status: string }>(`/applications/${seg(id)}/snooze`, { method: 'PUT', body: JSON.stringify(data) }),

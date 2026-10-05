@@ -353,6 +353,8 @@ input.input::-webkit-date-and-time-value {
 }
 #app.route-exit {
   opacity: 0;
+  /* The old page stays in place until the next one is ready: no clicks on it. */
+  pointer-events: none;
 }
 
 /* Dropdown animation */
@@ -444,6 +446,15 @@ input.input::-webkit-date-and-time-value {
       "select meta  actions";
   }
   .ac-actions { margin-left: 16px; }
+}
+
+/* Horizontal strips that scroll (detail tabs) without a visible scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Source autocomplete */

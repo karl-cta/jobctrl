@@ -54,6 +54,14 @@ function mailtoHref(email: string): string {
   return `mailto:${encodeURIComponent(parts[0])}@${encodeURIComponent(parts[1])}`
 }
 
+/** A tel: URL from the digits of a phone number, keeping a leading +, or '' when it has
+ *  no digits (the caller then shows it as plain text). */
+function telHref(phone: string): string {
+  const digits = phone.replace(/\D/g, '')
+  if (!digits) return ''
+  return `tel:${phone.trim().startsWith('+') ? '+' : ''}${digits}`
+}
+
 /** Salary as shown on the detail page: 45000 -> "45k €", 550 -> "550 €", 60000 GBP -> "60k GBP". */
 function formatSalary(amount: number, currency: string | undefined, locale: string): string {
   const n = amount >= 1000
@@ -85,7 +93,7 @@ function buildInterviewForm(iv?: Partial<Interview>): {
     </div>
     <div role="group" aria-labelledby="iv-scheduled-label">
       <span id="iv-scheduled-label" class="label">${t('detail.interview_scheduled')}</span>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <input id="iv-scheduled-date" name="scheduled_date" class="input" type="date" aria-label="${t('detail.interview_date')}"
           value="${iv?.scheduled_at ? new Date(iv.scheduled_at).toISOString().slice(0, 10) : ''}" />
         <input id="iv-scheduled-time" name="scheduled_time" class="input" type="time" aria-label="${t('detail.interview_time')}"
@@ -210,7 +218,7 @@ function makeTabs(tabs: Array<{ id: string; label: string; panel: HTMLElement }>
   wrapper.className = 'space-y-0'
 
   const bar = document.createElement('div')
-  bar.className = 'relative flex gap-0 border-b border-border overflow-x-auto'
+  bar.className = 'relative flex gap-0 border-b border-border overflow-x-auto no-scrollbar'
   bar.setAttribute('role', 'tablist')
 
   const indicator = document.createElement('div')
@@ -326,12 +334,34 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   const dateFmt = getDateLocale()
 
   // After each PUT, copy back the fields the server may set itself (applied_at on the move
-  // to Applied), so a later save from this page never sends a stale applied_at.
-  const syncApp = (updated: Application) => {
+  // to Applied), so a later save from this page never sends a stale applied_at. A status
+  // picked while this request was in flight is kept: its own save is queued behind it.
+  const syncApp = (updated: Application, sent: Partial<Application>) => {
     app.applied_at = updated.applied_at ?? undefined
-    app.status = updated.status
+    if (app.status === sent.status) app.status = updated.status
     app.updated_at = updated.updated_at
   }
+
+  // The in-place saves (status, interest, confidence, the three text tabs) each PUT the
+  // whole application. They go out one at a time and each payload is built from `app`
+  // when its turn comes, so a quick second change never sends a value the first one is
+  // still changing. A caller's own follow-up (rollback, re-render) runs before the next
+  // payload is built.
+  let saveQueue: Promise<unknown> = Promise.resolve()
+  const saveApp = (patch: Partial<Application>): Promise<Application> => {
+    const run = saveQueue.then(async () => {
+      const payload = { ...app, ...patch }
+      const updated = await api.applications.update(id, payload)
+      syncApp(updated, payload)
+      return updated
+    })
+    saveQueue = run.catch(() => {})
+    return run
+  }
+
+  // Document listeners added below, removed on the next navigation so visits do not
+  // pile them up.
+  const docListeners = new AbortController()
 
   const content = document.createElement('div')
   content.className = 'space-y-10 stagger'
@@ -385,6 +415,13 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     }, { once: true })
   }
 
+  // The badge and the menu's check mark follow app.status.
+  function paintStatus() {
+    statusBtn.className = `badge ${STATUS_COLORS[app!.status as ApplicationStatus]} cursor-pointer hover:opacity-80 transition-opacity duration-100`
+    statusBtn.textContent = statusLabel(app!.status as ApplicationStatus)
+    renderStatusItems()
+  }
+
   function renderStatusItems() {
     statusDropdown.innerHTML = ''
     ALL_STATUSES.forEach(s => {
@@ -399,24 +436,33 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       `
       item.addEventListener('click', async () => {
         closeDropdown()
+        statusBtn.focus()
+        const previous = app!.status
+        const patch: Partial<Application> = { status: s }
+        // applied_at is a calendar date: on the move to Applied, send the user's local
+        // day instead of letting the server stamp the current UTC instant.
+        if (s === 'Applied' && previous !== 'Applied' && !app!.applied_at) patch.applied_at = localCalendarDate()
+        app!.status = s
+        paintStatus()
         try {
-          const payload: Partial<Application> = { ...app!, status: s }
-          // applied_at is a calendar date: on the move to Applied, send the user's local
-          // day instead of letting the server stamp the current UTC instant.
-          if (s === 'Applied' && app!.status !== 'Applied' && !app!.applied_at) payload.applied_at = localCalendarDate()
-          const updated = await api.applications.update(id, payload)
-          syncApp(updated)
-          statusBtn.className = `badge ${STATUS_COLORS[s]} cursor-pointer hover:opacity-80 transition-opacity duration-100`
-          statusBtn.textContent = statusLabel(s)
-          renderStatusItems()
-          renderDetails()
-          void refreshTimeline()
-          const celebrateMsg: Record<string, string> = { Offer: t('list.celebrate_offer'), Accepted: t('list.celebrate_accepted') }
-          toast(celebrateMsg[s] || statusLabel(s), 'success')
-          if (s === 'Offer' || s === 'Accepted') celebrate(statusBtn)
+          await saveApp(patch)
         } catch {
+          // A newer pick owns the badge now: leave it.
+          if (app!.status === s) {
+            app!.status = previous
+            paintStatus()
+          }
           toast(t('form.error'), 'error')
+          return
         }
+        // renderDetails detaches and reattaches the status cell, which drops its focus.
+        const hadFocus = document.activeElement === statusBtn
+        renderDetails()
+        if (hadFocus) statusBtn.focus()
+        void refreshTimeline()
+        const celebrateMsg: Record<string, string> = { Offer: t('list.celebrate_offer'), Accepted: t('list.celebrate_accepted') }
+        toast(celebrateMsg[s] || statusLabel(s), 'success')
+        if (s === 'Offer' || s === 'Accepted') celebrate(statusBtn)
       })
       statusDropdown.appendChild(item)
     })
@@ -453,16 +499,17 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     e.preventDefault()
     items[next]?.focus()
   })
-  document.addEventListener('click', () => closeDropdown(), { capture: true })
+  document.addEventListener('click', () => closeDropdown(), { capture: true, signal: docListeners.signal })
 
   statusWrapper.appendChild(statusBtn)
   statusWrapper.appendChild(statusDropdown)
 
   // Interest: five stars, editable in place like the status and the confidence.
-  // Clicking the current level clears it.
+  // Clicking the current level clears it. The negative margins keep the first star under
+  // the label and the row as tall as before, with 24px hit areas.
   const ratingEl = document.createElement('div')
-  ratingEl.className = 'flex items-center -ml-0.5'
-  ratingEl.setAttribute('role', 'radiogroup')
+  ratingEl.className = 'flex items-center -ml-1 -my-0.5'
+  ratingEl.setAttribute('role', 'group')
   ratingEl.setAttribute('aria-label', t('form.rating'))
   const renderRating = (preview = 0) => {
     const level = preview || app.rating || 0
@@ -470,15 +517,14 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       const n = Number(star.dataset.star)
       star.classList.toggle('text-amber-400', n <= level)
       star.classList.toggle('text-surface-3', n > level)
-      star.setAttribute('aria-checked', String(n === app.rating))
+      star.setAttribute('aria-pressed', String(n === app.rating))
     })
   }
   for (let n = 1; n <= 5; n++) {
     const star = document.createElement('button')
     star.type = 'button'
     star.dataset.star = String(n)
-    star.className = 'p-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
-    star.setAttribute('role', 'radio')
+    star.className = 'p-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
     star.setAttribute('aria-label', `${n}/5 · ${t('form.rating_' + n)}`)
     star.title = t('form.rating_' + n)
     star.innerHTML = icons.star
@@ -489,11 +535,13 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       app.rating = next
       renderRating()
       try {
-        const updated = await api.applications.update(id, { ...app, rating: next })
-        syncApp(updated)
+        await saveApp({ rating: next })
       } catch {
-        app.rating = previous
-        renderRating()
+        // A newer click owns the stars now: leave them.
+        if (app.rating === next) {
+          app.rating = previous
+          renderRating()
+        }
         toast(t('form.error'), 'error')
       }
     })
@@ -554,7 +602,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     confWrapper.className = 'relative'
 
     const confBtn = document.createElement('button')
-    const currentConf = (app.confidence && app.confidence >= 1 && app.confidence <= 4) ? app.confidence : 0
+    const confLevel = () => (app.confidence && app.confidence >= 1 && app.confidence <= 4) ? app.confidence : 0
     const updateConfBtn = (level: number) => {
       if (level > 0) {
         confBtn.className = `text-sm font-medium cursor-pointer hover:opacity-80 transition-opacity ${confidenceColors[level] || 'text-muted'}`
@@ -566,7 +614,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         confBtn.setAttribute('aria-label', t('detail.confidence_unset'))
       }
     }
-    updateConfBtn(currentConf)
+    updateConfBtn(confLevel())
     confBtn.setAttribute('aria-haspopup', 'true')
     confBtn.setAttribute('aria-expanded', 'false')
     confWrapper.appendChild(confBtn)
@@ -600,14 +648,20 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         item.addEventListener('click', async () => {
           closeConf()
           confBtn.focus()
+          const previous = app!.confidence
+          const next = isCurrent ? undefined : n
+          app!.confidence = next
+          updateConfBtn(confLevel())
+          renderConfItems()
           try {
-            const newConf = isCurrent ? 0 : n
-            const updated = await api.applications.update(id, { ...app!, confidence: newConf || undefined })
-            syncApp(updated)
-            app!.confidence = newConf || undefined
-            updateConfBtn(newConf)
-            renderConfItems()
+            await saveApp({ confidence: next })
           } catch {
+            // A newer pick owns the button now: leave it.
+            if (app!.confidence === next) {
+              app!.confidence = previous
+              updateConfBtn(confLevel())
+              renderConfItems()
+            }
             toast(t('form.error'), 'error')
           }
         })
@@ -653,7 +707,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     // or the button could never close the menu it opened.
     document.addEventListener('click', (e) => {
       if (!confWrapper.contains(e.target as Node)) closeConf()
-    }, { capture: true })
+    }, { capture: true, signal: docListeners.signal })
     confWrapper.appendChild(confDrop)
     propCells.push(propCell(t('form.confidence'), confWrapper))
   }
@@ -713,7 +767,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Notes tab
   const notesPanel = document.createElement('div')
-  notesPanel.className = 'p-6 space-y-4'
+  notesPanel.className = 'p-4 sm:p-6 space-y-4'
   const notesTA = document.createElement('textarea')
   notesTA.className = 'input h-72 resize-y w-full'
   notesTA.value = app.notes ?? ''
@@ -725,8 +779,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   notesSaveBtn.addEventListener('click', async () => {
     const value = notesTA.value
     try {
-      const updated = await api.applications.update(id, { ...app, notes: value || undefined })
-      syncApp(updated)
+      await saveApp({ notes: value || undefined })
       app.notes = value || undefined
       notesTA.dataset.saved = value
       toast(t('detail.saved'), 'success')
@@ -739,7 +792,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Prep tab
   const prepPanel = document.createElement('div')
-  prepPanel.className = 'p-6 space-y-4'
+  prepPanel.className = 'p-4 sm:p-6 space-y-4'
   const prepTA = document.createElement('textarea')
   prepTA.className = 'input h-72 resize-y w-full'
   prepTA.value = app.speech ?? ''
@@ -751,8 +804,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   prepSaveBtn.addEventListener('click', async () => {
     const value = prepTA.value
     try {
-      const updated = await api.applications.update(id, { ...app, speech: value || undefined })
-      syncApp(updated)
+      await saveApp({ speech: value || undefined })
       app.speech = value || undefined
       prepTA.dataset.saved = value
       toast(t('detail.saved'), 'success')
@@ -765,7 +817,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Offer tab
   const offerPanel = document.createElement('div')
-  offerPanel.className = 'p-6 space-y-4'
+  offerPanel.className = 'p-4 sm:p-6 space-y-4'
   const offerTA = document.createElement('textarea')
   offerTA.className = 'input h-72 resize-y w-full whitespace-pre-wrap'
   offerTA.value = app.job_description ?? ''
@@ -777,8 +829,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   offerSaveBtn.addEventListener('click', async () => {
     const value = offerTA.value
     try {
-      const updated = await api.applications.update(id, { ...app, job_description: value || undefined })
-      syncApp(updated)
+      await saveApp({ job_description: value || undefined })
       app.job_description = value || undefined
       offerTA.dataset.saved = value
       toast(t('detail.saved'), 'success')
@@ -805,11 +856,12 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
   })
   setNavigationCleanup(() => {
     window.removeEventListener('beforeunload', handleBeforeUnload)
+    docListeners.abort()
   })
 
   // Interviews tab
   const interviewsPanel = document.createElement('div')
-  interviewsPanel.className = 'p-6 space-y-4'
+  interviewsPanel.className = 'p-4 sm:p-6 space-y-4'
 
   // Set once the sidebar exists: every interview or contact change refreshes it.
   let onListsChanged = () => {}
@@ -915,7 +967,12 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         `
         const modal = openModal({ title: t('detail.confirm_delete_interview'), content: confirmEl })
         confirmEl.querySelector('[data-cancel]')?.addEventListener('click', () => modal.close())
-        confirmEl.querySelector('[data-confirm]')?.addEventListener('click', async () => {
+        const confirmBtn = confirmEl.querySelector<HTMLButtonElement>('[data-confirm]')!
+        confirmBtn.addEventListener('click', async () => {
+          // Locked from the first click: a second DELETE would answer 404 after the first
+          // one succeeded. Unlocked only if the delete failed.
+          if (confirmBtn.disabled) return
+          confirmBtn.disabled = true
           try {
             await api.interviews.delete(iv.id)
             const idx = list.findIndex(x => x.id === iv.id)
@@ -925,6 +982,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             updateTabCounts()
             void refreshTimeline()
           } catch {
+            confirmBtn.disabled = false
             toast(t('form.error'), 'error')
           }
         })
@@ -939,7 +997,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Contacts tab
   const contactsPanel = document.createElement('div')
-  contactsPanel.className = 'p-6 space-y-4'
+  contactsPanel.className = 'p-4 sm:p-6 space-y-4'
 
   const renderContacts = (list: Contact[]) => {
     onListsChanged()
@@ -1042,7 +1100,10 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         `
         const modal = openModal({ title: t('detail.confirm_delete_contact'), content: confirmEl })
         confirmEl.querySelector('[data-cancel]')?.addEventListener('click', () => modal.close())
-        confirmEl.querySelector('[data-confirm]')?.addEventListener('click', async () => {
+        const confirmBtn = confirmEl.querySelector<HTMLButtonElement>('[data-confirm]')!
+        confirmBtn.addEventListener('click', async () => {
+          if (confirmBtn.disabled) return
+          confirmBtn.disabled = true
           try {
             await api.contacts.delete(c.id)
             const idx = list.findIndex(x => x.id === c.id)
@@ -1052,6 +1113,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
             updateTabCounts()
             void refreshTimeline()
           } catch {
+            confirmBtn.disabled = false
             toast(t('form.error'), 'error')
           }
         })
@@ -1066,7 +1128,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
 
   // Timeline tab
   const timelinePanel = document.createElement('div')
-  timelinePanel.className = 'p-6 space-y-4'
+  timelinePanel.className = 'p-4 sm:p-6 space-y-4'
   const renderTimeline = () => {
     timelinePanel.innerHTML = ''
     if (!app.timeline_events?.length) {
@@ -1133,21 +1195,34 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     const btn = tabs.el.querySelector<HTMLElement>(`[data-tab="${id}"]`)
     btn?.click()
     btn?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    btn?.focus({ preventScroll: true })
   }
 
   // Next interview: scheduled_at is floating wall-clock time, so "now" is compared in
-  // the same frame (the local clock read as UTC). Cancelled ones are skipped.
+  // the same frame (the local clock read as UTC). An interview stays here until it is
+  // over: its start plus its duration (an hour when unknown), or the whole day when it
+  // has no time (stored as midnight). Cancelled ones are skipped.
   const nextCard = document.createElement('div')
   nextCard.className = 'card space-y-2'
+  const isDateOnly = (at: string) => at.endsWith('T00:00:00Z')
   const renderNextInterview = () => {
     const d = new Date()
     const now = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes())
+    const notOver = (iv: Interview) => {
+      const start = new Date(iv.scheduled_at!).getTime()
+      if (isDateOnly(iv.scheduled_at!)) return start + 86_400_000 > now
+      return start + (iv.duration_minutes ?? 60) * 60_000 >= now
+    }
     const next = interviews
-      .filter(iv => iv.scheduled_at && iv.outcome !== 'Cancelled' && new Date(iv.scheduled_at).getTime() >= now)
+      .filter(iv => iv.scheduled_at && iv.outcome !== 'Cancelled' && notOver(iv))
       .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime())[0]
     nextCard.hidden = !next
     if (!next) return
-    const when = new Date(next.scheduled_at!).toLocaleString(dateFmt, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
+    const at = new Date(next.scheduled_at!)
+    const opts: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }
+    if (at.getUTCFullYear() !== d.getFullYear()) opts.year = 'numeric'
+    if (!isDateOnly(next.scheduled_at!)) { opts.hour = '2-digit'; opts.minute = '2-digit' }
+    const when = at.toLocaleString(dateFmt, opts)
     nextCard.innerHTML = `
       <h3 class="text-sm font-semibold text-primary">${t('detail.next_interview')}</h3>
       <p class="text-sm text-primary">${esc(when)}</p>
@@ -1166,14 +1241,19 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
       <h3 class="text-sm font-semibold text-primary">${t('detail.tab_contacts')}</h3>
       ${contacts.map(c => {
         const mailto = c.email ? mailtoHref(c.email) : ''
+        const tel = c.phone ? telHref(c.phone) : ''
         const linkedin = c.linkedin ? sanitizeUrl(c.linkedin) : ''
         return `
           <div class="min-w-0">
             <p class="text-sm font-medium text-primary truncate">${esc(c.name)}</p>
             ${c.role ? `<p class="text-sm text-muted truncate">${esc(c.role)}</p>` : ''}
             <div class="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-              ${mailto ? `<a href="${esc(mailto)}" class="text-sm text-accent hover:text-accent-hover transition-colors truncate max-w-full">${esc(c.email)}</a>` : ''}
-              ${c.phone ? `<span class="text-sm text-muted">${esc(c.phone)}</span>` : ''}
+              ${c.email ? (mailto
+                ? `<a href="${esc(mailto)}" class="text-sm text-accent hover:text-accent-hover transition-colors truncate max-w-full">${esc(c.email)}</a>`
+                : `<span class="text-sm text-muted truncate max-w-full">${esc(c.email)}</span>`) : ''}
+              ${c.phone ? (tel
+                ? `<a href="${esc(tel)}" class="text-sm text-accent hover:text-accent-hover transition-colors">${esc(c.phone)}</a>`
+                : `<span class="text-sm text-muted">${esc(c.phone)}</span>`) : ''}
               ${linkedin ? `<a href="${esc(linkedin)}" target="_blank" rel="noopener noreferrer" class="text-sm text-accent hover:text-accent-hover transition-colors">LinkedIn</a>` : ''}
             </div>
           </div>`
@@ -1245,7 +1325,10 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
     `
     const modal = openModal({ title: t('detail.confirm_delete'), content: confirmEl })
     confirmEl.querySelector('[data-cancel]')?.addEventListener('click', () => modal.close())
-    confirmEl.querySelector('[data-confirm]')?.addEventListener('click', async () => {
+    const confirmBtn = confirmEl.querySelector<HTMLButtonElement>('[data-confirm]')!
+    confirmBtn.addEventListener('click', async () => {
+      if (confirmBtn.disabled) return
+      confirmBtn.disabled = true
       try {
         await api.applications.delete(app.id)
         modal.close()
@@ -1253,6 +1336,7 @@ export async function DetailPage(id: string): Promise<HTMLElement> {
         setNavigationGuard(null)
         navigate('/applications')
       } catch {
+        confirmBtn.disabled = false
         toast(t('form.error'), 'error')
       }
     })
