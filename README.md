@@ -1,49 +1,48 @@
-<p align="center">
-  <img src="frontend/public/favicon.svg" width="64" height="64" alt="JobCtrl" />
-</p>
+<div align="center">
 
-<h1 align="center">JobCtrl</h1>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner-dark.png">
+  <img src=".github/assets/banner.png" alt="JobCtrl, the job application tracker you host yourself. Your job search, under control." width="100%">
+</picture>
 
-<p align="center">
-  Self-hosted job application tracker. Single Go binary, SQLite database, zero cloud dependencies.
-</p>
+[Install](#install) · [Configuration](#configuration) · [Upgrading](#upgrading) · [Changelog](CHANGELOG.md)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white" alt="Go" />
-  <img src="https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white" alt="SQLite" />
-  <img src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker" />
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
-</p>
+</div>
 
-<p align="center">
-  <img src=".github/jobctrl-demo.gif" alt="JobCtrl Demo" />
-</p>
+## What is JobCtrl?
+
+JobCtrl keeps your job search in one place: every application, where it stands, what comes next and who has not answered yet. It runs on your own machine as one binary and one SQLite file, with no account to create.
 
 ## Features
 
-- **Full pipeline tracking** with statuses from Wishlist to Accepted, interviews, contacts, and timeline
-- **Auto-fill from URL** by pasting a job listing link (extracts company, title, salary via JSON-LD / Open Graph)
-- **Dashboard** with period-based indicators, an "in progress" card for live interview processes, a 12-week sent-vs-replies timeline, a six-month activity heatmap with per-day details, a journey funnel, status breakdown and sources
-- **Follow-up reminders** for applications with no response after an interview (snooze or dismiss)
-- **Automatic "no reply"** moves applications with no answer after 30 days out of your pending pile
-- **Duplicate detection** warns you when applying to a company you've already contacted
-- **Bulk actions** to change status or delete multiple applications at once
-- **Sort and filter** by date, company, status, confidence, interest, and source
-- **Table and Kanban views** with pagination
-- **JSON backup and restore** plus CSV export for spreadsheets
-- **Bilingual** French and English
-- **Dark mode** with warm stone palette
-- **Self-hosted** with your data on your machine, no accounts, no cloud
+- **See where you stand.** A dashboard by period with clickable indicators, an "In progress" card for live processes and their next interview, a 12-week timeline of applications sent and replies received, a six-month activity heatmap, a journey funnel and a full status breakdown.
+- **Follow every application.** Statuses from Wishlist to Accepted, with interviews, contacts, notes and a dated history.
+- **Add a job in one paste.** Paste the link of a job listing and the company, title and salary are filled in from the page.
+- **Nothing slips through.** A reminder shows up when a process has gone quiet for ten days after an interview, and you can snooze it. Applications left unanswered for 30 days move to "No reply" on their own.
+- **Lists your way.** Table or Kanban, search, filters, sorting by date, company, status, confidence or interest, bulk status changes, and a warning before you apply twice to the same company.
+- **Your data stays yours.** JSON backup and restore, CSV export for spreadsheets, and a snapshot of the database before any upgrade that changes its schema.
+- **French and English**, light and dark themes, and a layout that works on a phone too.
 
-## Quick start
+## Screenshots
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/dashboard-dark.png">
+  <img src=".github/assets/dashboard.png" alt="The JobCtrl dashboard: six indicators with their trends, the processes in progress with their next interview, the 12-week timeline of applications and replies, and the journey from sent to accepted" width="1280">
+</picture>
+
+<p align="center"><sub>The dashboard, filled with made-up applications.</sub></p>
+
+## Install
 
 ### Docker (recommended)
 
 ```bash
+mkdir jobctrl && cd jobctrl
+curl -O https://raw.githubusercontent.com/karl-cta/jobctrl/main/docker-compose.yml
 docker compose up -d
 ```
 
-Open [http://localhost:8080](http://localhost:8080). Data is persisted in a Docker volume.
+Open [http://localhost:8080](http://localhost:8080). Your data lives in a Docker volume. Images are published for `linux/amd64` and `linux/arm64`.
 
 ### From source
 
@@ -72,7 +71,7 @@ JobCtrl has no built-in authentication. Keep it on your machine or local network
 Your data lives in a single SQLite file and every upgrade is designed to keep it intact:
 
 - **Automatic backup.** Before a schema migration runs on an existing database, the app writes a consistent snapshot next to it (`job-ctrl.db.backup-<timestamp>`) and logs its path. Keep or delete these files as you like.
-- **Migrations are additive.** Your history is kept. The only rows ever removed are interviews, contacts and timeline entries that still belonged to applications you had deleted: older versions kept them by mistake, and they are cleaned up once. The one status that was removed in this version, "Withdrawn", is mapped back to "Applied" with a visible entry in each affected application's timeline. Applications left unanswered for more than 30 days then move to "No reply" on their own (see `JOB_CTRL_NO_REPLY_DAYS`).
+- **Migrations are additive.** Your history is kept. The only rows ever removed are interviews, contacts and timeline entries that still belonged to applications you had deleted: older versions kept them by mistake, and 1.2.0 cleans them up once. The only status ever removed, "Withdrawn" (1.1.0), is mapped back to "Applied" with a visible entry in each affected application's timeline. Applications left unanswered for more than 30 days then move to "No reply" on their own (see `JOB_CTRL_NO_REPLY_DAYS`).
 - **Old exports still import.** A JSON backup made with a previous version restores cleanly: legacy statuses are mapped, and interviews that older versions silently dropped ("Screening" type, "Rejected" outcome) are now kept. Anything the importer cannot take is logged rather than lost.
 
 While the app runs, SQLite keeps two companion files next to the database, `job-ctrl.db-wal` and `job-ctrl.db-shm`. To roll back an upgrade, stop the app, delete `job-ctrl.db-wal` and `job-ctrl.db-shm`, then copy the backup file over `job-ctrl.db`. With Docker, the files live in the volume (`docker volume ls` shows its name):
@@ -88,14 +87,15 @@ Then pin the previous image tag in `docker-compose.yml` before starting again, o
 ## Development
 
 ```bash
-make dev       # Go + Vite hot reload
-go test ./...  # backend tests
+make dev                         # Go + Vite hot reload
+go test ./...                    # backend tests
+cd frontend && npm run build     # type-check and build the frontend
 ```
 
 ## Stack
 
-Go + [chi](https://github.com/go-chi/chi) · SQLite (pure Go, no CGO) · Vanilla TypeScript + Vite + Tailwind · Docker
+Go and [chi](https://github.com/go-chi/chi), SQLite in pure Go (no CGO), vanilla TypeScript with Vite and Tailwind, Docker.
 
 ## License
 
-MIT
+[MIT](LICENSE)
